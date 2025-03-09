@@ -291,7 +291,7 @@ class ShopifyIntegration:
         
         return {'products': all_products}
     
-    def import_products_from_shopify(self, db):
+    def import_products_from_shopify(self, db, current_store=None):
         """Import products from Shopify to the local database."""
         if not self.is_configured():
             return {'error': 'Shopify integration not configured', 'imported': 0}
@@ -307,6 +307,17 @@ class ShopifyIntegration:
         
         imported_count = 0
         updated_count = 0
+        
+        # Get the current store from the normalized URL
+        from store_management import normalize_url
+        from models import Store
+        
+        store = None
+        if current_store:
+            store = current_store
+        else:
+            normalized_url = normalize_url(self.store_url)
+            store = Store.query.filter_by(url=normalized_url).first()
         
         for shopify_product in products:
             # Check if product already exists in database
@@ -348,6 +359,10 @@ class ShopifyIntegration:
                     shopify_id=str(shopify_product['id'])
                 )
                 
+                # Associate with store if available
+                if store:
+                    new_product.store_id = store.id
+                
                 # Get price from first variant
                 if shopify_product['variants'] and 'price' in shopify_product['variants'][0]:
                     new_product.price = float(shopify_product['variants'][0]['price'])
@@ -362,9 +377,16 @@ class ShopifyIntegration:
                     
                     for tag_name in tag_names:
                         if tag_name:
-                            tag = Tag.query.filter_by(name=tag_name.lower()).first()
+                            # Check if tag exists for this store
+                            tag_query = Tag.query.filter_by(name=tag_name.lower())
+                            if store:
+                                tag_query = tag_query.filter_by(store_id=store.id)
+                            
+                            tag = tag_query.first()
                             if not tag:
                                 tag = Tag(name=tag_name.lower())
+                                if store:
+                                    tag.store_id = store.id
                                 db.session.add(tag)
                             new_product.tags.append(tag)
                 
@@ -473,7 +495,7 @@ class ShopifyIntegration:
         
         return result
     
-    def import_collections_from_shopify(self, db):
+    def import_collections_from_shopify(self, db, current_store=None):
         """Import collections from Shopify to the local database."""
         if not self.is_configured():
             return {'error': 'Shopify integration not configured', 'imported': 0}
@@ -489,6 +511,17 @@ class ShopifyIntegration:
         
         imported_count = 0
         updated_count = 0
+        
+        # Get the current store from the normalized URL
+        from store_management import normalize_url
+        from models import Store
+        
+        store = None
+        if current_store:
+            store = current_store
+        else:
+            normalized_url = normalize_url(self.store_url)
+            store = Store.query.filter_by(url=normalized_url).first()
         
         for shopify_collection in collections:
             # Extract collection data
@@ -514,6 +547,10 @@ class ShopifyIntegration:
                     description=collection_body_html,
                     shopify_id=collection_id
                 )
+                
+                # Associate with store if available
+                if store:
+                    new_collection.store_id = store.id
                 db.session.add(new_collection)
                 imported_count += 1
         

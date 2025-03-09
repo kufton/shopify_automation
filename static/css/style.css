@@ -29,6 +29,16 @@ footer {
 .product-image {
     height: 200px;
     object-fit: cover;
+    transition: opacity 0.3s ease;
+}
+
+/* For lazy loading images */
+.lazy-load {
+    opacity: 0;
+}
+
+.lazy-load.loaded {
+    opacity: 1;
 }
 
 .collection-card {

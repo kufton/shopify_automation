@@ -1,14 +1,16 @@
 import os
 import anthropic
-from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
+from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, g, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import func
-from models import db, Product, Tag, Collection, EnvVar, product_tags
-from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm
+from models import db, Product, Tag, Collection, EnvVar, product_tags, Store
+from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm
 from claude_integration import ClaudeTaggingService
 from shopify_integration import ShopifyIntegration
+from store_management import get_current_store, set_current_store, filter_query_by_store, get_all_stores
 from config import Config
+from auto_migrate import run_migrations
 import json
 
 def create_app():
@@ -27,19 +29,66 @@ def create_app():
     claude_service = ClaudeTaggingService()
     shopify_service = ShopifyIntegration()
     
-    # Make Config available to all templates
+    # Make Config, current_store, and get_all_stores available to all templates
     @app.context_processor
-    def inject_config():
-        return dict(Config=Config)
+    def inject_template_vars():
+        return dict(
+            Config=Config, 
+            current_store=get_current_store(),
+            get_all_stores=get_all_stores
+        )
     
-    # Create database tables
+    # Set up request handlers
+    @app.before_request
+    def before_request():
+        # Initialize current store for this request
+        g.current_store = get_current_store()
+    
+    # Create database tables and run migrations
     with app.app_context():
         db.create_all()
+        
+        # Run database migrations to ensure multi-store support
+        run_migrations(app)
+        
         # Initialize default environment variables if they don't exist
         for key, value in Config.DEFAULT_ENV_VARS.items():
             if not EnvVar.query.filter_by(key=key).first():
                 env_var = EnvVar(key=key, value=value, description=f"Default {key}")
                 db.session.add(env_var)
+        
+        # Create a default store if none exists
+        if not Store.query.first():
+            # Try to get store URL from environment
+            store_url = Config.SHOPIFY_STORE_URL
+            if store_url:
+                # Normalize the URL
+                normalized_url = store_url.lower()
+                if '://' in normalized_url:
+                    normalized_url = normalized_url.split('://', 1)[1]
+                normalized_url = normalized_url.rstrip('/')
+                
+                # Create a store name from the URL
+                store_name = normalized_url.split('.')[0].capitalize()
+                
+                default_store = Store(
+                    name=f"{store_name} Store",
+                    url=normalized_url,
+                    access_token=Config.SHOPIFY_ACCESS_TOKEN or ""
+                )
+            else:
+                default_store = Store(
+                    name="Default Store",
+                    url="default-store.myshopify.com",
+                    access_token=""
+                )
+            
+            db.session.add(default_store)
+            db.session.commit()
+            
+            # We can't set the session outside of a request context
+            # This will be handled by the get_current_store function
+        
         db.session.commit()
         
         # Load environment variables from database
@@ -74,18 +123,43 @@ def create_app():
     @app.route('/')
     def index():
         """Home page."""
-        products = Product.query.all()
-        collections = Collection.query.all()
-        return render_template('index.html', products=products, collections=collections)
+        # Filter products and collections by store
+        products_query = Product.query
+        collections_query = Collection.query
+        
+        if g.current_store:
+            products_query = products_query.filter_by(store_id=g.current_store.id)
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        
+        # Limit the number of products and collections for better performance
+        products = products_query.order_by(Product.created_at.desc()).limit(20).all()
+        collections = collections_query.order_by(Collection.created_at.desc()).limit(10).all()
+        
+        # Get all stores for the store selector
+        stores = Store.query.all()
+        
+        return render_template('index.html', products=products, collections=collections, stores=stores)
     
     @app.route('/products')
     def products():
         """List all products."""
-        products = Product.query.all()
+        # Filter products by store
+        products_query = Product.query
+        
+        if g.current_store:
+            products_query = products_query.filter_by(store_id=g.current_store.id)
+        
+        # Add pagination
+        page = request.args.get('page', 1, type=int)
+        per_page = 20  # Number of products per page
+        pagination = products_query.paginate(page=page, per_page=per_page, error_out=False)
+        products = pagination.items
+        
         auto_tag_form = AutoTagForm()
         create_collections_form = CreateCollectionsForm()
-        return render_template('products.html', products=products, auto_tag_form=auto_tag_form, 
-                              create_collections_form=create_collections_form)
+        
+        return render_template('products.html', products=products, pagination=pagination,
+                              auto_tag_form=auto_tag_form, create_collections_form=create_collections_form)
     
     @app.route('/products/add', methods=['GET', 'POST'])
     def add_product():
@@ -98,6 +172,10 @@ def create_app():
                 price=form.price.data,
                 image_url=form.image_url.data
             )
+            
+            # Associate with current store
+            if g.current_store:
+                product.store_id = g.current_store.id
             db.session.add(product)
             db.session.commit()
             
@@ -105,10 +183,16 @@ def create_app():
             if Config.ANTHROPIC_API_KEY:
                 tags = claude_service.generate_tags(product)
                 for tag_name in tags:
-                    # Check if tag exists, create if not
-                    tag = Tag.query.filter_by(name=tag_name).first()
+                    # Check if tag exists for this store, create if not
+                    tag_query = Tag.query.filter_by(name=tag_name)
+                    if g.current_store:
+                        tag_query = tag_query.filter_by(store_id=g.current_store.id)
+                    
+                    tag = tag_query.first()
                     if not tag:
                         tag = Tag(name=tag_name)
+                        if g.current_store:
+                            tag.store_id = g.current_store.id
                         db.session.add(tag)
                     product.tags.append(tag)
                 db.session.commit()
@@ -148,10 +232,16 @@ def create_app():
         
         if form.validate_on_submit():
             tag_name = form.name.data.lower().strip()
-            # Check if tag exists, create if not
-            tag = Tag.query.filter_by(name=tag_name).first()
+            # Check if tag exists for this store, create if not
+            tag_query = Tag.query.filter_by(name=tag_name)
+            if g.current_store:
+                tag_query = tag_query.filter_by(store_id=g.current_store.id)
+            
+            tag = tag_query.first()
             if not tag:
                 tag = Tag(name=tag_name)
+                if g.current_store:
+                    tag.store_id = g.current_store.id
                 db.session.add(tag)
             
             # Add tag to product if not already added
@@ -192,8 +282,12 @@ def create_app():
             flash('Claude API key not set. Please set it in environment variables.', 'danger')
             return redirect(url_for('env_vars'))
         
-        # Get all products to tag
-        products = Product.query.filter(Product.id.in_(product_ids)).all()
+        # Get all products to tag (filtered by store)
+        products_query = Product.query.filter(Product.id.in_(product_ids))
+        if g.current_store:
+            products_query = products_query.filter_by(store_id=g.current_store.id)
+        
+        products = products_query.all()
         
         if not products:
             flash('No valid products found for auto-tagging', 'warning')
@@ -213,13 +307,32 @@ def create_app():
                 tags_added = 0
                 
                 for tag_name in tags:
-                    # Check if tag exists, create if not
-                    tag = Tag.query.filter_by(name=tag_name).first()
+                    # Check if tag exists for this store, create if not
+                    tag_query = Tag.query.filter_by(name=tag_name)
+                    if g.current_store:
+                        tag_query = tag_query.filter_by(store_id=g.current_store.id)
+                    
+                    tag = tag_query.first()
                     if not tag:
-                        print(f"Creating new tag: {tag_name}")
-                        tag = Tag(name=tag_name)
+                        # Double check if tag exists with this name for any store
+                        existing_tag = Tag.query.filter_by(name=tag_name).first()
+                        if existing_tag:
+                            # Tag exists but for a different store, create a new one for this store
+                            print(f"Tag {tag_name} exists for another store, creating for current store")
+                            tag = Tag(name=f"{tag_name}", store_id=g.current_store.id if g.current_store else None)
+                        else:
+                            print(f"Creating new tag: {tag_name}")
+                            tag = Tag(name=tag_name)
+                            if g.current_store:
+                                tag.store_id = g.current_store.id
+                        
                         db.session.add(tag)
-                        db.session.flush()  # Flush to get the tag ID
+                        try:
+                            db.session.flush()  # Flush to get the tag ID
+                        except Exception as e:
+                            print(f"Error creating tag {tag_name}: {str(e)}")
+                            db.session.rollback()
+                            continue
                     
                     # Add tag to product if not already added
                     if tag not in product.tags:
@@ -263,8 +376,12 @@ def create_app():
         page = request.args.get('page', 1, type=int)
         per_page = 12  # Number of collections per page
         
-        # Get paginated collections
-        pagination = Collection.query.paginate(page=page, per_page=per_page, error_out=False)
+        # Get paginated collections (filtered by store)
+        collections_query = Collection.query
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        
+        pagination = collections_query.paginate(page=page, per_page=per_page, error_out=False)
         collections = pagination.items
         
         return render_template('collections.html', collections=collections, pagination=pagination)
@@ -273,26 +390,38 @@ def create_app():
     def add_collection():
         """Add a new collection."""
         form = CollectionForm()
-        # Get all tags for selection
-        tags = Tag.query.all()
+        # Get all tags for selection (filtered by store)
+        tags_query = Tag.query
+        if g.current_store:
+            tags_query = tags_query.filter_by(store_id=g.current_store.id)
+        
+        tags = tags_query.all()
         
         if form.validate_on_submit():
             # Generate a slug from the name if not provided
             base_slug = form.name.data.lower().replace(' ', '-')
             slug = base_slug
             
-            # Check if a collection with this slug already exists
-            # If so, append a unique identifier
+            # Check if a collection with this slug already exists (across all stores)
+            # We need to check globally to avoid unique constraint violations
+            slug_query = Collection.query.filter_by(slug=slug)
+            
             counter = 1
-            while Collection.query.filter_by(slug=slug).first():
+            while slug_query.first():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
+                # Check the new slug
+                slug_query = Collection.query.filter_by(slug=slug)
             
             collection = Collection(
                 name=form.name.data,
                 slug=slug,
                 description=form.description.data
             )
+            
+            # Associate with current store
+            if g.current_store:
+                collection.store_id = g.current_store.id
             
             # Set tag if provided
             if form.tag_id.data:
@@ -315,8 +444,12 @@ def create_app():
         """Edit an existing collection."""
         collection = Collection.query.get_or_404(id)
         form = CollectionForm(obj=collection)
-        # Get all tags for selection
-        tags = Tag.query.all()
+        # Get all tags for selection (filtered by store)
+        tags_query = Tag.query
+        if g.current_store:
+            tags_query = tags_query.filter_by(store_id=g.current_store.id)
+        
+        tags = tags_query.all()
         
         if form.validate_on_submit():
             # Check if name has changed
@@ -326,11 +459,15 @@ def create_app():
                 slug = base_slug
                 
                 # Check if a collection with this slug already exists (excluding this collection)
-                # If so, append a unique identifier
+                # We need to check globally to avoid unique constraint violations
+                slug_query = Collection.query.filter(Collection.slug == slug, Collection.id != collection.id)
+                
                 counter = 1
-                while Collection.query.filter(Collection.slug == slug, Collection.id != collection.id).first():
+                while slug_query.first():
                     slug = f"{base_slug}-{counter}"
                     counter += 1
+                    # Check the new slug
+                    slug_query = Collection.query.filter(Collection.slug == slug, Collection.id != collection.id)
                 
                 # Update the slug
                 collection.slug = slug
@@ -379,10 +516,15 @@ def create_app():
         created_count = 0
         skipped_count = 0
         
-        # Get tags with product counts
-        tag_counts = db.session.query(
+        # Get tags with product counts (filtered by store)
+        tag_query = db.session.query(
             Tag, func.count(product_tags.c.product_id).label('product_count')
-        ).outerjoin(product_tags).group_by(Tag.id).all()
+        ).outerjoin(product_tags).group_by(Tag.id)
+        
+        if g.current_store:
+            tag_query = tag_query.filter(Tag.store_id == g.current_store.id)
+        
+        tag_counts = tag_query.all()
         
         # First, create collections from existing tags
         for tag, product_count in tag_counts:
@@ -410,8 +552,12 @@ def create_app():
                 skipped_count += 1
                 continue
                 
-            # Check if a collection already exists for this tag
-            existing_collection = Collection.query.filter_by(tag_id=tag.id).first()
+            # Check if a collection already exists for this tag (filtered by store)
+            collection_query = Collection.query.filter_by(tag_id=tag.id)
+            if g.current_store:
+                collection_query = collection_query.filter_by(store_id=g.current_store.id)
+            
+            existing_collection = collection_query.first()
             if not existing_collection:
                 # Generate SEO-friendly title
                 title = f"{tag.name.title()} Collection | Premium {tag.name.title()} Products"
@@ -420,12 +566,16 @@ def create_app():
                 base_slug = tag.name.lower().replace(' ', '-')
                 slug = base_slug
                 
-                # Check if a collection with this slug already exists
-                # If so, append a unique identifier
+                # Check if a collection with this slug already exists (across all stores)
+                # We need to check globally to avoid unique constraint violations
+                slug_query = Collection.query.filter_by(slug=slug)
+                
                 counter = 1
-                while Collection.query.filter_by(slug=slug).first():
+                while slug_query.first():
                     slug = f"{base_slug}-{counter}"
                     counter += 1
+                    # Check the new slug
+                    slug_query = Collection.query.filter_by(slug=slug)
                 
                 # Get product titles for meta description
                 product_titles = [p.title for p in tag.products[:5]]
@@ -463,6 +613,10 @@ def create_app():
                     tag=tag
                 )
                 
+                # Associate with current store
+                if g.current_store:
+                    collection.store_id = g.current_store.id
+                
                 # We don't need to manually add products to the collection
                 # since it's a smart collection based on the tag
                 # The tag relationship will automatically include all products with this tag
@@ -473,8 +627,12 @@ def create_app():
         
         db.session.commit()
         
-        # Now, analyze products without tags to create new collections
-        untagged_products = Product.query.filter(~Product.tags.any()).all()
+        # Now, analyze products without tags to create new collections (filtered by store)
+        untagged_query = Product.query.filter(~Product.tags.any())
+        if g.current_store:
+            untagged_query = untagged_query.filter_by(store_id=g.current_store.id)
+        
+        untagged_products = untagged_query.all()
         if untagged_products:
             flash(f'Analyzing {len(untagged_products)} untagged products for collections. This may take a while...', 'info')
             
@@ -492,25 +650,37 @@ def create_app():
             # Create collections for each category
             for category, products in categories.items():
                 if len(products) > 0:
-                    # Check if a collection already exists for this category
-                    existing_collection = Collection.query.filter_by(name=f"{category.capitalize()} Collection").first()
+                    # Check if a collection already exists for this category (filtered by store)
+                    collection_query = Collection.query.filter_by(name=f"{category.capitalize()} Collection")
+                    if g.current_store:
+                        collection_query = collection_query.filter_by(store_id=g.current_store.id)
+                    
+                    existing_collection = collection_query.first()
                     if not existing_collection:
                         # Generate SEO-friendly slug
                         base_slug = category.lower().replace(' ', '-')
                         slug = base_slug
                         
-                        # Check if a collection with this slug already exists
-                        # If so, append a unique identifier
+                        # Check if a collection with this slug already exists (across all stores)
+                        # We need to check globally to avoid unique constraint violations
+                        slug_query = Collection.query.filter_by(slug=slug)
+                        
                         counter = 1
-                        while Collection.query.filter_by(slug=slug).first():
+                        while slug_query.first():
                             slug = f"{base_slug}-{counter}"
                             counter += 1
+                            # Check the new slug
+                            slug_query = Collection.query.filter_by(slug=slug)
                         
                         collection = Collection(
                             name=f"{category.capitalize()} Collection",
                             slug=slug,
                             description=f"Collection of {len(products)} products categorized as '{category}'",
                         )
+                        
+                        # Associate with current store
+                        if g.current_store:
+                            collection.store_id = g.current_store.id
                         
                         # Add all products with this category
                         for product in products:
@@ -535,8 +705,12 @@ def create_app():
         
         # If this is a smart collection (has a tag), get products with this tag
         if collection.tag:
-            # Get all products with this tag (dynamically)
-            products = Product.query.join(Product.tags).filter(Tag.id == collection.tag_id).all()
+            # Get all products with this tag (dynamically, filtered by store)
+            products_query = Product.query.join(Product.tags).filter(Tag.id == collection.tag_id)
+            if g.current_store:
+                products_query = products_query.filter(Product.store_id == g.current_store.id)
+            
+            products = products_query.all()
             return render_template('view_collection.html', collection=collection, products=products)
         else:
             # For regular collections, use the pre-populated products
@@ -545,7 +719,12 @@ def create_app():
     @app.route('/collections/delete-all', methods=['POST'])
     def delete_all_collections():
         """Delete all collections."""
-        collections = Collection.query.all()
+        # Filter collections by store
+        collections_query = Collection.query
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        
+        collections = collections_query.all()
         count = len(collections)
         
         for collection in collections:
@@ -672,14 +851,21 @@ def create_app():
         page = request.args.get('page', 1, type=int)
         per_page = 20  # Number of tags per page
         
-        # Get total count for pagination
-        total = db.session.query(Tag).count()
+        # Get total count for pagination (filtered by store)
+        tags_count_query = db.session.query(Tag)
+        if g.current_store:
+            tags_count_query = tags_count_query.filter_by(store_id=g.current_store.id)
         
-        # Get paginated tags with product counts
+        total = tags_count_query.count()
+        
+        # Get paginated tags with product counts (filtered by store)
         tags_query = db.session.query(Tag, func.count(product_tags.c.product_id).label('product_count')) \
             .outerjoin(product_tags) \
             .group_by(Tag.id) \
             .order_by(Tag.name)
+        
+        if g.current_store:
+            tags_query = tags_query.filter(Tag.store_id == g.current_store.id)
         
         # Manual pagination since we're using a complex query
         offset = (page - 1) * per_page
@@ -707,14 +893,36 @@ def create_app():
     @app.route('/api/products', methods=['GET'])
     def api_products():
         """API endpoint to get all products."""
-        products = Product.query.all()
+        # Filter products by store
+        products_query = Product.query
+        if g.current_store:
+            products_query = products_query.filter_by(store_id=g.current_store.id)
+        
+        products = products_query.all()
         return jsonify([product.to_dict() for product in products])
     
     @app.route('/api/collections', methods=['GET'])
     def api_collections():
         """API endpoint to get all collections."""
-        collections = Collection.query.all()
+        # Filter collections by store
+        collections_query = Collection.query
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        
+        collections = collections_query.all()
         return jsonify([collection.to_dict() for collection in collections])
+    
+    @app.route('/debug/stores')
+    def debug_stores():
+        """Debug endpoint to check stores."""
+        stores = get_all_stores()
+        current_store = get_current_store()
+        
+        return jsonify({
+            'stores': [{'id': store.id, 'name': store.name, 'url': store.url} for store in stores],
+            'current_store': {'id': current_store.id, 'name': current_store.name, 'url': current_store.url} if current_store else None,
+            'store_count': len(stores)
+        })
     
     @app.route('/debug/env-vars')
     def debug_env_vars():
@@ -761,31 +969,13 @@ def create_app():
     @app.route('/migrate-database')
     def migrate_db_route():
         """Migrate the database to add new columns."""
-        try:
-            # Add the slug column if it doesn't exist
-            with app.app_context():
-                db.engine.execute('ALTER TABLE collections ADD COLUMN slug TEXT')
-                print("Added slug column to collections table")
-        except Exception as e:
-            print(f"Error adding slug column: {str(e)}")
+        from auto_migrate import run_migrations
+        success = run_migrations(app)
         
-        try:
-            # Add the meta_description column if it doesn't exist
-            with app.app_context():
-                db.engine.execute('ALTER TABLE collections ADD COLUMN meta_description TEXT')
-                print("Added meta_description column to collections table")
-        except Exception as e:
-            print(f"Error adding meta_description column: {str(e)}")
-        
-        try:
-            # Add the shopify_id column if it doesn't exist
-            with app.app_context():
-                db.engine.execute('ALTER TABLE collections ADD COLUMN shopify_id TEXT')
-                print("Added shopify_id column to collections table")
-        except Exception as e:
-            print(f"Error adding shopify_id column: {str(e)}")
-        
-        return "Database migration completed. <a href='/collections'>Go to Collections</a>"
+        if success:
+            return "Database migration completed successfully. <a href='/collections'>Go to Collections</a>"
+        else:
+            return "Database migration encountered errors. Check the logs for details. <a href='/collections'>Go to Collections</a>"
     
     # Shopify Integration Routes
     @app.route('/shopify/import-products', methods=['POST'])
@@ -795,7 +985,7 @@ def create_app():
             flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
             return redirect(url_for('env_vars'))
         
-        result = shopify_service.import_products_from_shopify(db)
+        result = shopify_service.import_products_from_shopify(db, current_store=g.current_store)
         
         if 'error' in result:
             flash(f'Error importing products from Shopify: {result["error"]}', 'danger')
@@ -811,7 +1001,7 @@ def create_app():
             flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
             return redirect(url_for('env_vars'))
         
-        result = shopify_service.import_collections_from_shopify(db)
+        result = shopify_service.import_collections_from_shopify(db, current_store=g.current_store)
         
         if 'error' in result:
             flash(f'Error importing collections from Shopify: {result["error"]}', 'danger')
@@ -988,6 +1178,105 @@ def create_app():
             flash(f'Failed to export {error_count} collections to Shopify', 'warning')
         
         return redirect(url_for('collections'))
+    
+    # Store Management Routes
+    @app.route('/stores')
+    def stores():
+        """List all stores."""
+        stores = get_all_stores()
+        return render_template('stores.html', stores=stores)
+    
+    @app.route('/stores/add', methods=['GET', 'POST'])
+    def add_store():
+        """Add a new store."""
+        form = StoreForm()
+        if form.validate_on_submit():
+            # Check if store with this URL already exists
+            existing_store = Store.query.filter_by(url=form.url.data).first()
+            if existing_store:
+                flash(f'A store with URL "{form.url.data}" already exists.', 'warning')
+                return redirect(url_for('stores'))
+            
+            # Create new store
+            store = Store(
+                name=form.name.data,
+                url=form.url.data,
+                access_token=form.access_token.data
+            )
+            db.session.add(store)
+            db.session.commit()
+            
+            # Run migrations for the new store
+            from auto_migrate import migrate_store
+            migrate_store(app, store.id)
+            
+            # Set as current store
+            set_current_store(store.id)
+            
+            flash('Store added successfully and set as current store.', 'success')
+            return redirect(url_for('stores'))
+        
+        return render_template('store_form.html', form=form, title='Add Store')
+    
+    @app.route('/stores/<int:id>/edit', methods=['GET', 'POST'])
+    def edit_store(id):
+        """Edit an existing store."""
+        store = Store.query.get_or_404(id)
+        form = StoreForm(obj=store)
+        
+        if form.validate_on_submit():
+            # Check if URL changed and if new URL already exists
+            if form.url.data != store.url:
+                existing_store = Store.query.filter_by(url=form.url.data).first()
+                if existing_store and existing_store.id != store.id:
+                    flash(f'A store with URL "{form.url.data}" already exists.', 'warning')
+                    return redirect(url_for('stores'))
+            
+            # Update store
+            form.populate_obj(store)
+            db.session.commit()
+            
+            # If this is the current store, update environment variables
+            if g.current_store and g.current_store.id == store.id:
+                os.environ['SHOPIFY_STORE_URL'] = store.url
+                if store.access_token:
+                    os.environ['SHOPIFY_ACCESS_TOKEN'] = store.access_token
+            
+            flash('Store updated successfully.', 'success')
+            return redirect(url_for('stores'))
+        
+        return render_template('store_form.html', form=form, title='Edit Store')
+    
+    @app.route('/stores/<int:id>/delete', methods=['POST'])
+    def delete_store(id):
+        """Delete a store."""
+        store = Store.query.get_or_404(id)
+        
+        # Check if this is the current store
+        is_current = g.current_store and g.current_store.id == store.id
+        
+        # Delete the store
+        db.session.delete(store)
+        db.session.commit()
+        
+        # If this was the current store, clear the session
+        if is_current:
+            if 'current_store_id' in session:
+                del session['current_store_id']
+        
+        flash('Store deleted successfully.', 'success')
+        return redirect(url_for('stores'))
+    
+    @app.route('/stores/<int:id>/select')
+    def set_current_store_route(id):
+        """Set the current store."""
+        store = set_current_store(id)
+        if store:
+            flash(f'Now viewing store: {store.name}', 'success')
+        else:
+            flash('Store not found.', 'danger')
+        
+        return redirect(url_for('index'))
     
     return app
 

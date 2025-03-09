@@ -46,7 +46,49 @@
                             <i class="fas fa-cogs"></i> Environment Variables
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'stores' %}active{% endif %}" href="{{ url_for('stores') }}">
+                            <i class="fas fa-store"></i> Stores
+                        </a>
+                    </li>
                 </ul>
+            </div>
+            
+            <div class="ms-auto d-flex align-items-center">
+                <div class="btn-group">
+                    {% set stores = get_all_stores() %}
+                    {% if stores %}
+                        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-store"></i> 
+                            {% if current_store %}
+                                {{ current_store.name }}
+                            {% else %}
+                                Select Store
+                            {% endif %}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% for store in stores %}
+                                <li>
+                                    <a class="dropdown-item {% if current_store and current_store.id == store.id %}active{% endif %}" 
+                                       href="{{ url_for('set_current_store_route', id=store.id) }}">
+                                        {% if current_store and current_store.id == store.id %}
+                                            <i class="fas fa-check me-2"></i>
+                                        {% endif %}
+                                        {{ store.name }}
+                                        <small class="text-muted d-block">{{ store.url }}</small>
+                                    </a>
+                                </li>
+                            {% endfor %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('stores') }}"><i class="fas fa-cog me-2"></i> Manage Stores</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('add_store') }}"><i class="fas fa-plus me-2"></i> Add New Store</a></li>
+                        </ul>
+                    {% else %}
+                        <a href="{{ url_for('add_store') }}" class="btn btn-primary">
+                            <i class="fas fa-store"></i> Set Up Store
+                        </a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </nav>

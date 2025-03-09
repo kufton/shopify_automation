@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} - Product Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">{{ title }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else "")) }}
+                        {% for error in form.name.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                        <small class="form-text text-muted">A descriptive name for this store.</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.url.label(class="form-label") }}
+                        {{ form.url(class="form-control" + (" is-invalid" if form.url.errors else "")) }}
+                        {% for error in form.url.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                        <small class="form-text text-muted">The Shopify store URL (e.g., your-store.myshopify.com).</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.access_token.label(class="form-label") }}
+                        {{ form.access_token(class="form-control" + (" is-invalid" if form.access_token.errors else "")) }}
+                        {% for error in form.access_token.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                        <small class="form-text text-muted">Your Shopify access token for API access.</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('stores') }}" class="btn btn-secondary">Cancel</a>
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

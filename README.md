@@ -1,6 +1,13 @@
 # Product Manager with Claude 3.7 and Shopify Integration
 
-A Flask-based product management application with automatic tagging using Claude 3.7 and Shopify integration.
+A Flask-based product management application with automatic tagging using Claude 3.7 and Shopify integration. Supports multiple stores with isolated data.
+
+## 🚀 SEO Solutions for Your Business
+
+- **Hire us to do your SEO** ✅ [Click here](https://bit.ly/3X4Bjps)  
+- **Try our AI SEO tool** 🔥 [Check it out](https://bit.ly/3CHQ7DK)  
+- **Got an agency? We'll automate it** 💣 [Learn more](https://bit.ly/3X4Bjps)  
+
 
 ## Features
 
@@ -9,6 +16,7 @@ A Flask-based product management application with automatic tagging using Claude
 - Tag management
 - Collection creation from tags
 - Shopify integration (import/export products and collections)
+- Multi-store support with isolated data
 - Environment variable management
 - Responsive UI with Bootstrap 5
 
@@ -48,29 +56,40 @@ The application uses environment variables for configuration. These can be manag
 
 ## Usage
 
+### Stores
+
+- Create and manage multiple stores
+- Each store has its own products, tags, and collections
+- Switch between stores using the store selector
+- Data is isolated between stores
+
 ### Products
 
 - Add products with title, description, price, and image URL
 - Products are automatically tagged using Claude 3.7 if an API key is provided
 - Manage tags for each product
 - View all products in a table
+- Products are associated with the current store
 
 ### Tags
 
 - View all tags with product counts
 - Create collections from tags
 - Delete tags
+- Tags are store-specific
 
 ### Collections
 
 - Create collections based on tags
 - View products in collections
 - Edit and delete collections
+- Collections are store-specific
 
 ### Environment Variables
 
 - Manage environment variables through the UI
 - Secure storage of sensitive information like API keys
+- Environment variables are shared across all stores
 
 ## Claude 3.7 Integration
 
@@ -98,6 +117,7 @@ To enable these features, you need to:
 2. Add the following environment variables:
    - `SHOPIFY_ACCESS_TOKEN`: Your Shopify access token
    - `SHOPIFY_STORE_URL`: Your Shopify store URL (e.g., `https://your-store.myshopify.com`)
+3. Or configure these settings per store in the store management interface
 
 ### Using Shopify Integration
 
@@ -106,6 +126,32 @@ To enable these features, you need to:
 - **Export Collection**: When viewing a collection, click the "Export to Shopify" button to export the collection to your Shopify store
 
 Imported products will maintain their Shopify ID for syncing, and any tags will be imported as well.
+
+## Multi-Store Support
+
+The application supports managing multiple Shopify stores:
+
+1. Each store has its own isolated set of products, tags, and collections
+2. You can switch between stores using the store selector in the navigation bar
+3. When adding a new store, you can specify:
+   - Store name
+   - Shopify store URL
+   - Shopify access token
+
+### Database Migrations
+
+The application includes tools for database migrations:
+
+- `auto_migrate.py`: Contains functions to automatically migrate the database schema
+- `migrate_store.py`: Command-line tool to migrate a specific store's data
+
+To migrate a specific store:
+
+```bash
+python migrate_store.py <store_id>
+```
+
+You can also trigger migrations through the web interface by visiting `/migrate-database`.
 
 ## License
 

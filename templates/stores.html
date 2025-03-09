@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}Stores - Product Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="section-heading">Stores</h1>
+            <div>
+                <a href="{{ url_for('add_store') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Add Store
+                </a>
+            </div>
+        </div>
+        
+        {% if current_store %}
+        <div class="alert alert-info">
+            <h5><i class="fas fa-info-circle"></i> Current Store</h5>
+            <p>You are currently viewing data for: <strong>{{ current_store.name }}</strong> ({{ current_store.url }})</p>
+        </div>
+        {% endif %}
+        
+        {% if stores %}
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Store List</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Products</th>
+                                <th>Collections</th>
+                                <th>Tags</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for store in stores %}
+                            <tr {% if current_store and current_store.id == store.id %}class="table-primary"{% endif %}>
+                                <td>{{ store.name }}</td>
+                                <td>{{ store.url }}</td>
+                                <td>{{ store.products|length }}</td>
+                                <td>{{ store.collections|length }}</td>
+                                <td>{{ store.tags|length }}</td>
+                                <td class="action-buttons">
+                                    <a href="{{ url_for('edit_store', id=store.id) }}" class="btn btn-sm btn-outline-primary btn-icon">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+<a href="{{ url_for('set_current_store_route', id=store.id) }}" class="btn btn-sm btn-outline-success btn-icon">
+                                        <i class="fas fa-check"></i> Select
+                                    </a>
+                                    <form action="{{ url_for('delete_store', id=store.id) }}" method="post" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-store"></i>
+            <h3>No Stores Yet</h3>
+            <p>Get started by adding your first store.</p>
+            <a href="{{ url_for('add_store') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Store
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

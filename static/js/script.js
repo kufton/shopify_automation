@@ -1,6 +1,19 @@
 // Custom JavaScript for Product Manager
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Implement lazy loading for images
+    const lazyImages = document.querySelectorAll('img[loading="lazy"]');
+    
+    // Add lazy-load class to all lazy-loaded images
+    lazyImages.forEach(function(img) {
+        img.classList.add('lazy-load');
+        
+        // When image loads, add the loaded class for the fade-in effect
+        img.addEventListener('load', function() {
+            this.classList.add('loaded');
+        });
+    });
+    
     // Auto-dismiss alerts after 5 seconds
     setTimeout(function() {
         const alerts = document.querySelectorAll('.alert');

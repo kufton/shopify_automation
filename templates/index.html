@@ -7,6 +7,18 @@
     <div class="col-md-12">
         <h1 class="section-heading">Product Manager Dashboard</h1>
         
+        <!-- Debug Store Information -->
+        <div class="alert alert-info">
+            <h4>Debug Store Information</h4>
+            <p>Current Store: {{ current_store.name if current_store else 'None' }}</p>
+            <p>All Stores: 
+                {% for store in get_all_stores() %}
+                    {{ store.name }} (ID: {{ store.id }}), 
+                {% endfor %}
+            </p>
+            <p>Total Stores: {{ get_all_stores()|length }}</p>
+        </div>
+        
         {% if not products %}
         <div class="empty-state">
             <i class="fas fa-box-open"></i>
@@ -64,7 +76,12 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">Recent Products</h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Recent Products</h5>
+                            {% if current_store %}
+                            <span class="badge bg-light text-primary">{{ current_store.name }}</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="list-group">
@@ -95,7 +112,12 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">Recent Collections</h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Recent Collections</h5>
+                            {% if current_store %}
+                            <span class="badge bg-light text-success">{{ current_store.name }}</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body">
                         {% if collections %}
@@ -152,7 +174,9 @@
                             <div class="col-md-3">
                                 <form action="{{ url_for('auto_tag_products') }}" method="post">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="product_ids" value="{{ products|map(attribute='id')|join(',') }}">
+                                    {% for product in products[:20] %}
+                                    <input type="hidden" name="product_ids" value="{{ product.id }}">
+                                    {% endfor %}
                                     <button type="submit" class="btn btn-outline-info btn-lg w-100 mb-2">
                                         <i class="fas fa-tags"></i> Auto-Tag All
                                     </button>
