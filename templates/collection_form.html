@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} - Product Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">{{ title }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {{ form.tag_id(id="tag_id") }}
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label required-field">{{ form.name.label }}</label>
+                        {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else ""), id="name", placeholder="Enter collection name") }}
+                        {% if form.name.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.name.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="slug" class="form-label">{{ form.slug.label }}</label>
+                        {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else ""), id="slug", placeholder="Enter SEO-friendly URL slug (e.g., blue-cotton-shirts)") }}
+                        {% if form.slug.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.slug.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">Leave blank to auto-generate from name. Use hyphens instead of spaces.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">{{ form.description.label }}</label>
+                        {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else ""), id="description", rows="3", placeholder="Enter collection description") }}
+                        {% if form.description.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.description.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="meta_description" class="form-label">{{ form.meta_description.label }}</label>
+                        {{ form.meta_description(class="form-control" + (" is-invalid" if form.meta_description.errors else ""), id="meta_description", rows="2", placeholder="Enter SEO meta description (max 160 characters)") }}
+                        {% if form.meta_description.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.meta_description.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">This appears in search engine results. Keep it under 160 characters.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Create Smart Collection from Tag (Optional)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Selected Tag:</span>
+                            <span class="form-control" id="selected-tag">
+                                {% if form.tag_id.data %}
+                                    {% for tag in tags %}
+                                        {% if tag.id|string == form.tag_id.data|string %}
+                                            {{ tag.name }}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    None
+                                {% endif %}
+                            </span>
+                            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#tagModal">
+                                <i class="fas fa-tags"></i> Select Tag
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            <strong>Smart Collection:</strong> If a tag is selected, this will create a smart collection that automatically includes all products with this tag. 
+                            New products with this tag will automatically appear in the collection.
+                        </div>
+                        <div class="form-text">
+                            <strong>Regular Collection:</strong> If no tag is selected, this will create a regular collection where you manually add products.
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('collections') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Collections
+                        </a>
+                        {{ form.submit(class="btn btn-success") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tag Selection Modal -->
+<div class="modal fade" id="tagModal" tabindex="-1" aria-labelledby="tagModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="tagModalLabel">Select Tag</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {% if tags %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tag Name</th>
+                                <th>Product Count</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>None (No tag)</td>
+                                <td>-</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary tag-selector" 
+                                            data-tag-id="" data-tag-name="None" data-bs-dismiss="modal">
+                                        <i class="fas fa-check"></i> Select
+                                    </button>
+                                </td>
+                            </tr>
+                            {% for tag in tags %}
+                            <tr>
+                                <td>{{ tag.name }}</td>
+                                <td>
+                                    <span class="badge bg-primary rounded-pill">{{ tag.products|length }}</span>
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-primary tag-selector" 
+                                            data-tag-id="{{ tag.id }}" data-tag-name="{{ tag.name }}" data-bs-dismiss="modal">
+                                        <i class="fas fa-check"></i> Select
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <p>No tags available. You need to create tags first.</p>
+                    <a href="{{ url_for('products') }}" class="btn btn-sm btn-info">Go to Products</a>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Update tag selection in collection form
+        const tagSelectors = document.querySelectorAll('.tag-selector');
+        if (tagSelectors.length > 0) {
+            tagSelectors.forEach(function(selector) {
+                selector.addEventListener('click', function() {
+                    const tagId = this.getAttribute('data-tag-id');
+                    const tagName = this.getAttribute('data-tag-name');
+                    document.getElementById('tag_id').value = tagId;
+                    document.getElementById('selected-tag').textContent = tagName;
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}

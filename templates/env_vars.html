@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block title %}Environment Variables - Product Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="section-heading">Environment Variables</h1>
+            <a href="{{ url_for('add_env_var') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Environment Variable
+            </a>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Important Information</h5>
+            </div>
+            <div class="card-body">
+                <p>Environment variables are used to configure the application. They are stored in the database and loaded into the application at runtime.</p>
+                <p>Some environment variables are required for certain features to work:</p>
+                <ul>
+                    <li><strong>ANTHROPIC_API_KEY</strong>: Required for Claude 3.7 integration (auto-tagging)</li>
+                    <li><strong>SHOPIFY_ACCESS_TOKEN</strong>: Required for Shopify integration</li>
+                    <li><strong>SHOPIFY_STORE_URL</strong>: Required for Shopify integration</li>
+                    <li><strong>SECRET_KEY</strong>: Used for securing the application (session cookies, CSRF protection)</li>
+                    <li><strong>DATABASE_URI</strong>: Database connection string</li>
+                </ul>
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Note</h6>
+                    <p>Changes to environment variables take effect immediately for the current session. However, they will not affect other running instances of the application.</p>
+                </div>
+            </div>
+        </div>
+        
+        {% if env_vars %}
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Environment Variables</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Value</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for env_var in env_vars %}
+                            <tr>
+                                <td class="env-var-key">{{ env_var.key }}</td>
+                                <td>
+                                    {% if env_var.key == 'ANTHROPIC_API_KEY' or env_var.key == 'SECRET_KEY' %}
+                                    <div class="input-group">
+                                        <input type="password" id="value-{{ env_var.id }}" class="form-control env-var-value" value="{{ env_var.value }}" readonly>
+                                        <button class="btn btn-outline-secondary toggle-password" type="button" data-target="value-{{ env_var.id }}">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary copy-to-clipboard" type="button" data-target="value-{{ env_var.id }}">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    {% else %}
+                                    <div class="input-group">
+                                        <input type="text" id="value-{{ env_var.id }}" class="form-control env-var-value" value="{{ env_var.value }}" readonly>
+                                        <button class="btn btn-outline-secondary copy-to-clipboard" type="button" data-target="value-{{ env_var.id }}">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>{{ env_var.description or '' }}</td>
+                                <td class="action-buttons">
+                                    <a href="{{ url_for('edit_env_var', id=env_var.id) }}" class="btn btn-sm btn-outline-primary btn-icon">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    {% if env_var.key not in Config.DEFAULT_ENV_VARS %}
+                                    <form action="{{ url_for('delete_env_var', id=env_var.id) }}" method="post" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-cogs"></i>
+            <h3>No Environment Variables</h3>
+            <p>Add environment variables to configure the application.</p>
+            <a href="{{ url_for('add_env_var') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Environment Variable
+            </a>
+        </div>
+        {% endif %}
+        
+        {% if not Config.ANTHROPIC_API_KEY %}
+        <div class="card mt-4 api-key-warning">
+            <div class="card-body">
+                <h5><i class="fas fa-exclamation-triangle"></i> Claude API Key Not Set</h5>
+                <p>To enable automatic product tagging with Claude 3.7, you need to set your Anthropic API key.</p>
+                <ol>
+                    <li>Get an API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a></li>
+                    <li>Add it as an environment variable with the key <code>ANTHROPIC_API_KEY</code></li>
+                </ol>
+                <a href="{{ url_for('add_env_var') }}" class="btn btn-warning">
+                    <i class="fas fa-plus"></i> Add API Key
+                </a>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if not Config.SHOPIFY_ACCESS_TOKEN or not Config.SHOPIFY_STORE_URL %}
+        <div class="card mt-4 api-key-warning">
+            <div class="card-body">
+                <h5><i class="fas fa-exclamation-triangle"></i> Shopify Integration Not Configured</h5>
+                <p>To enable Shopify integration for importing and exporting products and collections, you need to set up your Shopify credentials.</p>
+                <ol>
+                    <li>Get an access token from your Shopify store admin</li>
+                    <li>Add the following environment variables:
+                        <ul>
+                            <li><code>SHOPIFY_ACCESS_TOKEN</code> - Your Shopify access token</li>
+                            <li><code>SHOPIFY_STORE_URL</code> - Your Shopify store URL (e.g., https://your-store.myshopify.com)</li>
+                        </ul>
+                    </li>
+                </ol>
+                <a href="{{ url_for('add_env_var') }}" class="btn btn-warning">
+                    <i class="fas fa-plus"></i> Add Shopify Credentials
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

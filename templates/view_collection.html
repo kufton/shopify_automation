@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ collection.name }} - Product Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="section-heading">{{ collection.name }}</h1>
+            <div>
+                <form action="{{ url_for('export_collection_to_shopify', id=collection.id) }}" method="post" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success me-2">
+                        <i class="fas fa-upload"></i> Export to Shopify
+                    </button>
+                </form>
+                <a href="{{ url_for('edit_collection', id=collection.id) }}" class="btn btn-primary me-2">
+                    <i class="fas fa-edit"></i> Edit Collection
+                </a>
+                <a href="{{ url_for('collections') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Collections
+                </a>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Collection Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5>Description</h5>
+                        <p>{{ collection.description or 'No description provided.' }}</p>
+                        
+                        {% if collection.slug %}
+                        <h5>SEO Slug</h5>
+                        <p><code>{{ collection.slug }}</code></p>
+                        {% endif %}
+                        
+                        {% if collection.meta_description %}
+                        <h5>Meta Description</h5>
+                        <p class="text-muted">{{ collection.meta_description }}</p>
+                        {% set meta_length = collection.meta_description|length %}
+                        {% set percentage = (meta_length / 160) * 100 %}
+                        <div class="progress mb-2" style="height: 5px;">
+                            <div class="progress-bar bg-{% if percentage < 80 %}success{% elif percentage < 100 %}warning{% else %}danger{% endif %}" 
+                                 role="progressbar" style="width: {{ percentage }}%;" 
+                                 aria-valuenow="{{ meta_length }}" aria-valuemin="0" aria-valuemax="160"></div>
+                        </div>
+                        <small class="text-muted">{{ meta_length }}/160 characters</small>
+                        {% endif %}
+                        
+                        {% if collection.tag %}
+                        <h5 class="mt-3">Smart Collection</h5>
+                        <p>This is a smart collection that automatically includes all products with the tag:</p>
+                        <span class="badge bg-info">{{ collection.tag.name }}</span>
+                        <div class="alert alert-info mt-2">
+                            <small><i class="fas fa-info-circle"></i> New products with this tag will automatically appear in this collection.</small>
+                        </div>
+                        {% else %}
+                        <h5 class="mt-3">Regular Collection</h5>
+                        <p>This is a manually curated collection of products.</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h5 class="card-title">Collection Info</h5>
+                                <ul class="list-unstyled">
+                                    <li><strong>Products:</strong> {{ products|default(collection.products)|length }}</li>
+                                    <li><strong>Created:</strong> {{ collection.created_at.strftime('%Y-%m-%d') }}</li>
+                                    <li><strong>Last Updated:</strong> {{ collection.updated_at.strftime('%Y-%m-%d') }}</li>
+                                    {% if collection.shopify_id %}
+                                    <li><strong>Shopify ID:</strong> {{ collection.shopify_id }}</li>
+                                    <li><strong>Shopify Status:</strong> <span class="badge bg-success">Synced</span></li>
+                                    {% else %}
+                                    <li><strong>Shopify Status:</strong> <span class="badge bg-warning">Not Synced</span></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Products in Collection</h5>
+                    <span class="badge bg-light text-dark">{{ products|default(collection.products)|length }} products</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% set display_products = products|default(collection.products) %}
+                {% if display_products %}
+                <div class="row">
+                    {% for product in display_products %}
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            {% if product.image_url %}
+                            <img src="{{ product.image_url }}" class="card-img-top product-image" alt="{{ product.title }}">
+                            {% else %}
+                            <div class="card-img-top product-image bg-light d-flex align-items-center justify-content-center">
+                                <i class="fas fa-image fa-3x text-muted"></i>
+                            </div>
+                            {% endif %}
+                            <div class="card-body">
+                                <h5 class="card-title">{{ product.title }}</h5>
+                                <p class="card-text">{{ product.description|truncate(100) if product.description else 'No description' }}</p>
+                                {% if product.price %}
+                                <p class="card-text"><strong>Price:</strong> ${{ "%.2f"|format(product.price) }}</p>
+                                {% endif %}
+                                <div class="mt-2">
+                                    {% for tag in product.tags %}
+                                    <span class="badge bg-secondary tag-badge">{{ tag.name }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <div class="btn-group w-100">
+                                    <a href="{{ url_for('edit_product', id=product.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a>
+                                    <a href="{{ url_for('manage_product_tags', id=product.id) }}" class="btn btn-sm btn-outline-info">
+                                        <i class="fas fa-tags"></i> Tags
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-box-open"></i>
+                    <h3>No Products in Collection</h3>
+                    <p>This collection doesn't have any products yet.</p>
+                    <a href="{{ url_for('edit_collection', id=collection.id) }}" class="btn btn-primary">
+                        <i class="fas fa-edit"></i> Edit Collection
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
