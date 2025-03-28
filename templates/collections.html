@@ -23,10 +23,11 @@
                         <i class="fas fa-download"></i> Import from Shopify
                     </button>
                 </form>
-                <form action="{{ url_for('export_sample_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
+                <form id="export-selected-form" action="{{ url_for('export_selected_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-upload"></i> Export 5 to Shopify
+                    <button type="submit" class="btn btn-success" id="export-selected-btn" disabled>
+                        <i class="fas fa-upload"></i> Export Selected to Shopify
+                        <span class="selected-count"></span>
                     </button>
                 </form>
                 <form action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
@@ -49,8 +50,16 @@
             {% for collection in collections %}
             <div class="col-md-4 mb-4">
                 <div class="card h-100 collection-card">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">{{ collection.name }}</h5>
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <div class="form-check">
+                            <input class="form-check-input collection-checkbox" type="checkbox" value="{{ collection.id }}" id="collection-{{ collection.id }}" {% if collection.shopify_id %}disabled{% endif %}>
+                            <label class="form-check-label text-white" for="collection-{{ collection.id }}">
+                                {{ collection.name }}
+                            </label>
+                        </div>
+                        {% if collection.shopify_id %}
+                        <span class="badge bg-info">Exported</span>
+                        {% endif %}
                     </div>
                     <div class="card-body">
                         <span class="badge bg-primary rounded-pill product-count-badge">
@@ -214,6 +223,50 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const exportForm = document.getElementById('export-selected-form');
+        const exportButton = document.getElementById('export-selected-btn');
+        const checkboxes = document.querySelectorAll('.collection-checkbox');
+        const selectedCountSpan = document.querySelector('.selected-count');
+        
+        // Function to update export button state
+        function updateExportButton() {
+            const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            exportButton.disabled = selectedCount === 0;
+            selectedCountSpan.textContent = selectedCount > 0 ? ` (${selectedCount})` : '';
+        }
+        
+        // Handle checkbox changes
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                updateExportButton();
+            });
+        });
+        
+        // Handle form submission
+        exportForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Get selected collection IDs
+            const selectedIds = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+            
+            // Remove any existing collection_ids inputs
+            exportForm.querySelectorAll('input[name="collection_ids"]').forEach(input => input.remove());
+            
+            // Add selected collection IDs to form
+            selectedIds.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'collection_ids';
+                input.value = id;
+                exportForm.appendChild(input);
+            });
+            
+            // Submit the form
+            exportForm.submit();
+        });
+        
         // Add confirmation for delete all collections button
         const deleteAllButtons = document.querySelectorAll('.delete-all-confirm');
         deleteAllButtons.forEach(function(button) {

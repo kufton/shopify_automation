@@ -5,19 +5,36 @@
 {% block content %}
 <div class="row">
     <div class="col-md-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="section-heading">Products</h1>
-            <div>
-                <form action="{{ url_for('import_products_from_shopify') }}" method="post" class="d-inline me-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-download"></i> Import from Shopify
-                    </button>
-                </form>
-                <a href="{{ url_for('add_product') }}" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Product
-                </a>
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="section-heading">Products</h1>
+                <div>
+                    <form action="{{ url_for('import_products_from_shopify') }}" method="post" class="d-inline me-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-download"></i> Import from Shopify
+                        </button>
+                    </form>
+                    <a href="{{ url_for('add_product') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Product
+                    </a>
+                </div>
             </div>
+            <form action="{{ url_for('products') }}" method="get" class="row g-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="search" placeholder="Search products..." value="{{ request.args.get('search', '') }}">
+                        <button type="submit" class="btn btn-outline-secondary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        {% if request.args.get('search') %}
+                        <a href="{{ url_for('products') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
         </div>
         
         {% if products %}
@@ -107,7 +124,7 @@
                     <ul class="pagination justify-content-center mb-0">
                         {% if pagination.has_prev %}
                             <li class="page-item">
-                                <a class="page-link" href="{{ url_for('products', page=pagination.prev_num) }}">Previous</a>
+                                <a class="page-link" href="{{ url_for('products', page=pagination.prev_num, search=request.args.get('search', '')) }}">Previous</a>
                             </li>
                         {% else %}
                             <li class="page-item disabled">
@@ -122,14 +139,14 @@
                                 </li>
                             {% else %}
                                 <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('products', page=page_num) }}">{{ page_num }}</a>
+                                    <a class="page-link" href="{{ url_for('products', page=page_num, search=request.args.get('search', '')) }}">{{ page_num }}</a>
                                 </li>
                             {% endif %}
                         {% endfor %}
                         
                         {% if pagination.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="{{ url_for('products', page=pagination.next_num) }}">Next</a>
+                                <a class="page-link" href="{{ url_for('products', page=pagination.next_num, search=request.args.get('search', '')) }}">Next</a>
                             </li>
                         {% else %}
                             <li class="page-item disabled">
@@ -159,26 +176,51 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Handle visible checkboxes to update hidden form checkboxes
-        const visibleCheckboxes = document.querySelectorAll('.product-checkbox-visible');
-        const hiddenCheckboxes = document.querySelectorAll('.product-checkbox');
-        
-        visibleCheckboxes.forEach(function(checkbox, index) {
-            checkbox.addEventListener('change', function() {
-                hiddenCheckboxes[index].checked = checkbox.checked;
-            });
-        });
+        // Get all product checkboxes
+        const productCheckboxes = document.querySelectorAll('.product-checkbox-visible');
         
         // Handle select all checkbox
         const selectAllCheckbox = document.getElementById('select-all-products');
         if (selectAllCheckbox) {
+            // Update "Select All" state based on individual checkboxes
+            function updateSelectAllState() {
+                const allChecked = Array.from(productCheckboxes).every(checkbox => checkbox.checked);
+                selectAllCheckbox.checked = allChecked;
+            }
+            
+            // Handle "Select All" checkbox change
             selectAllCheckbox.addEventListener('change', function() {
-                visibleCheckboxes.forEach(function(checkbox, index) {
-                    checkbox.checked = selectAllCheckbox.checked;
-                    hiddenCheckboxes[index].checked = selectAllCheckbox.checked;
+                const isChecked = this.checked;
+                productCheckboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
                 });
             });
+            
+            // Handle individual checkbox changes
+            productCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelectAllState);
+            });
         }
+        
+        // Handle form submission to include selected products
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                // Remove any existing product_ids inputs
+                form.querySelectorAll('input[name="product_ids"]').forEach(input => input.remove());
+                
+                // Add selected product IDs to the form
+                productCheckboxes.forEach(checkbox => {
+                    if (checkbox.checked) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'product_ids';
+                        input.value = checkbox.dataset.productId;
+                        form.appendChild(input);
+                    }
+                });
+            });
+        });
     });
 </script>
 {% endblock %}

@@ -7,3 +7,4 @@ wtforms==3.0.1
 requests==2.31.0
 aiohttp==3.9.1
 asyncio==3.4.3
+httpx==0.27.1

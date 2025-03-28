@@ -143,11 +143,19 @@ def create_app():
     @app.route('/products')
     def products():
         """List all products."""
-        # Filter products by store
+        # Get search parameter
+        search = request.args.get('search', '').strip()
+        
+        # Filter products by store and search term
         products_query = Product.query
         
         if g.current_store:
             products_query = products_query.filter_by(store_id=g.current_store.id)
+        
+        # Add search filter if search term provided
+        if search:
+            search_term = f"%{search}%"
+            products_query = products_query.filter(Product.title.ilike(search_term))
         
         # Add pagination
         page = request.args.get('page', 1, type=int)
@@ -592,18 +600,35 @@ def create_app():
                 # Use Claude to generate meta description and description
                 meta_description = f"Explore our {tag.name} collection featuring {product_titles_text}. Find the perfect {tag.name} for your needs."
                 
+                # Generate SEO-optimized title
+                title = f"{tag.name.title()} Collection | Shop Premium {tag.name.title()}"
+                
+                # Get product examples for description
+                product_examples = tag.products[:3]
+                example_text = ""
+                if product_examples:
+                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    if len(tag.products) > 3:
+                        example_text += f" and {len(tag.products) - 3} more items"
+                
+                # Generate SEO-optimized description with product examples
                 description = f"""
-                <p>Welcome to our curated collection of {tag.name} products. We've carefully selected {product_count} items that represent the best in quality and value.</p>
-                <p>Whether you're looking for {tag.name} for personal use or as a gift, our collection offers a variety of options to suit your needs.</p>
-                <h2>Why Choose Our {tag.name.title()} Products?</h2>
+                <h1>Premium {tag.name.title()} Collection</h1>
+                <p>Discover our exclusive collection of {tag.name} products, carefully curated to bring you the finest selection. {example_text}.</p>
+                <h2>Why Shop Our {tag.name.title()} Collection?</h2>
                 <ul>
-                    <li>Premium quality materials and craftsmanship</li>
-                    <li>Carefully selected for durability and performance</li>
-                    <li>Perfect for both everyday use and special occasions</li>
-                    <li>Backed by our satisfaction guarantee</li>
+                    <li>Handpicked selection of premium {tag.name} products</li>
+                    <li>High-quality materials and expert craftsmanship</li>
+                    <li>Trendy and timeless designs for every style</li>
+                    <li>Fast shipping and excellent customer service</li>
                 </ul>
-                <p>Browse our complete {tag.name} collection below and find the perfect item for you today!</p>
+                <h2>About Our {tag.name.title()} Products</h2>
+                <p>Each item in our {tag.name} collection is selected for its quality, style, and value. Whether you're looking for everyday essentials or statement pieces, you'll find the perfect {tag.name} to suit your needs.</p>
+                <p>Shop our {tag.name} collection today and experience the difference quality makes.</p>
                 """
+                
+                # Generate SEO meta description
+                meta_description = f"Shop our premium {tag.name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
                 
                 collection = Collection(
                     name=title,
@@ -1071,17 +1096,25 @@ def create_app():
         
         return redirect(url_for('view_collection', id=id))
     
-    @app.route('/shopify/export-collections/sample', methods=['POST'])
-    def export_sample_collections_to_shopify():
-        """Export 5 collections to Shopify as a test."""
+    @app.route('/shopify/export-collections/selected', methods=['POST'])
+    def export_selected_collections_to_shopify():
+        """Export selected collections to Shopify with SEO optimization."""
         if not shopify_service.is_configured():
             flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
             return redirect(url_for('env_vars'))
         
-        # Get up to 5 collections that meet the criteria
-        collections = Collection.query.filter(
-            Collection.shopify_id.is_(None)  # Only collections not yet exported
-        ).limit(5).all()
+        # Get selected collection IDs
+        collection_ids = request.form.getlist('collection_ids')
+        
+        if not collection_ids:
+            flash('No collections selected for export', 'warning')
+            return redirect(url_for('collections'))
+        
+        # Get selected collections (filtered by store)
+        collections_query = Collection.query.filter(Collection.id.in_(collection_ids))
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        collections = collections_query.all()
         
         if not collections:
             flash('No collections available to export. All collections may already be exported to Shopify.', 'warning')
@@ -1101,12 +1134,64 @@ def create_app():
                 original_products = collection.products
                 collection.products = products
                 
+                # Generate SEO-optimized content
+                product_examples = products[:3]
+                example_text = ""
+                if product_examples:
+                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    if len(products) > 3:
+                        example_text += f" and {len(products) - 3} more items"
+
+                # Update collection with SEO content
+                collection.name = f"{collection.tag.name.title()} Collection | Shop Premium {collection.tag.name.title()}"
+                collection.description = f"""
+                <h1>Premium {collection.tag.name.title()} Collection</h1>
+                <p>Discover our exclusive collection of {collection.tag.name} products, carefully curated to bring you the finest selection. {example_text}.</p>
+                <h2>Why Shop Our {collection.tag.name.title()} Collection?</h2>
+                <ul>
+                    <li>Handpicked selection of premium {collection.tag.name} products</li>
+                    <li>High-quality materials and expert craftsmanship</li>
+                    <li>Trendy and timeless designs for every style</li>
+                    <li>Fast shipping and excellent customer service</li>
+                </ul>
+                <h2>About Our {collection.tag.name.title()} Products</h2>
+                <p>Each item in our {collection.tag.name} collection is selected for its quality, style, and value. Whether you're looking for everyday essentials or statement pieces, you'll find the perfect {collection.tag.name} to suit your needs.</p>
+                <p>Shop our {collection.tag.name} collection today and experience the difference quality makes.</p>
+                """
+                collection.meta_description = f"Shop our premium {collection.tag.name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
+
                 result = shopify_service.export_collection_to_shopify(collection)
                 
                 # Restore original products
                 collection.products = original_products
             else:
-                # For regular collections, use the existing products
+                # For regular collections, optimize SEO content
+                product_examples = collection.products[:3]
+                example_text = ""
+                if product_examples:
+                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    if len(collection.products) > 3:
+                        example_text += f" and {len(collection.products) - 3} more items"
+
+                # Update collection with SEO content
+                base_name = collection.name.replace(" Collection", "").strip()
+                collection.name = f"{base_name} Collection | Shop Premium {base_name}"
+                collection.description = f"""
+                <h1>Premium {base_name} Collection</h1>
+                <p>Discover our exclusive collection of {base_name} products, carefully curated to bring you the finest selection. {example_text}.</p>
+                <h2>Why Shop Our {base_name} Collection?</h2>
+                <ul>
+                    <li>Handpicked selection of premium {base_name} products</li>
+                    <li>High-quality materials and expert craftsmanship</li>
+                    <li>Trendy and timeless designs for every style</li>
+                    <li>Fast shipping and excellent customer service</li>
+                </ul>
+                <h2>About Our {base_name} Products</h2>
+                <p>Each item in our {base_name} collection is selected for its quality, style, and value. Whether you're looking for everyday essentials or statement pieces, you'll find the perfect {base_name} to suit your needs.</p>
+                <p>Shop our {base_name} collection today and experience the difference quality makes.</p>
+                """
+                collection.meta_description = f"Shop our premium {base_name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
+
                 result = shopify_service.export_collection_to_shopify(collection)
             
             if 'error' not in result:

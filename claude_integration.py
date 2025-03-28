@@ -10,7 +10,7 @@ class ClaudeTaggingService:
     def __init__(self, api_key=None):
         """Initialize the Claude client."""
         self.api_key = api_key or Config.ANTHROPIC_API_KEY
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        # We'll use AsyncAnthropic client per request instead of storing an instance
         self.model = "claude-3-7-sonnet-20250219"
         
         # List of generic tags to avoid
@@ -78,17 +78,19 @@ class ClaudeTaggingService:
         
         try:
             # Call Claude API using the messages API
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=500,
-                temperature=0.2,
-                system="You are a product tagging expert that generates specific, meaningful tags that avoid generic terms and focus on distinctive product attributes.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
+            print("Attempting to connect to Claude through asyncio")
+            # Use Anthropic's async client directly
+            async with anthropic.AsyncAnthropic(api_key=self.api_key) as client:
+                response = await client.messages.create(
+                    model=self.model,
+                    max_tokens=500,
+                    temperature=0.2,
+                    system="You are a product tagging expert that generates specific, meaningful tags that avoid generic terms and focus on distinctive product attributes.",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            print(response)
             # Process the response
             tags_text = response.content[0].text.strip()
             print(f"Raw tags from Claude for {product.title}: {tags_text}")
@@ -114,6 +116,7 @@ class ClaudeTaggingService:
             return product, tags
             
         except Exception as e:
+            print(e)
             print(f"Error generating tags for {product.title}: {str(e)}")
             return product, ["error generating tags"]
     
@@ -179,14 +182,15 @@ class ClaudeTaggingService:
         try:
             # Call Claude API using the messages API
             response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=50,
-                temperature=0.1,
-                system="You are a product categorization expert that determines specific, meaningful categories for products, avoiding generic terms.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                lambda: self.client.messages.create(
+                    model=self.model,
+                    max_tokens=50,
+                    temperature=0.1,
+                    system="You are a product categorization expert that determines specific, meaningful categories for products, avoiding generic terms.",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
             )
             
             # Process the response
@@ -260,14 +264,15 @@ class ClaudeTaggingService:
         try:
             # Call Claude API using the messages API
             response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=1000,
-                temperature=0.7,
-                system="You are a creative copywriter specializing in e-commerce collection descriptions that are engaging, informative, and optimized for conversion.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                lambda: self.client.messages.create(
+                    model=self.model,
+                    max_tokens=1000,
+                    temperature=0.7,
+                    system="You are a creative copywriter specializing in e-commerce collection descriptions that are engaging, informative, and optimized for conversion.",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
             )
             
             # Process the response
@@ -304,14 +309,15 @@ class ClaudeTaggingService:
         try:
             # Call Claude API using the messages API
             response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=200,
-                temperature=0.4,
-                system="You are an SEO expert who creates compelling meta descriptions that drive clicks while staying within character limits.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                lambda: self.client.messages.create(
+                    model=self.model,
+                    max_tokens=200,
+                    temperature=0.4,
+                    system="You are an SEO expert who creates compelling meta descriptions that drive clicks while staying within character limits.",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
             )
             
             # Process the response
