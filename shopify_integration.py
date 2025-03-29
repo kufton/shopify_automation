@@ -5,23 +5,58 @@ from models import Product, Tag, Collection
 
 class ShopifyIntegration:
     """Integration with Shopify API."""
-    
+
     def __init__(self, access_token=None, store_url=None):
-        """Initialize the Shopify API client."""
-        self.access_token = access_token or Config.SHOPIFY_ACCESS_TOKEN
-        self.store_url = store_url or Config.SHOPIFY_STORE_URL
-        
-        # Remove trailing slash from store URL if present
-        if self.store_url and self.store_url.endswith('/'):
-            self.store_url = self.store_url[:-1]
-        
+        """Initialize the Shopify API client with default/global config."""
+        # Store default/global config if needed as fallback
+        self.default_access_token = access_token or Config.SHOPIFY_ACCESS_TOKEN
+        self.default_store_url = store_url or Config.SHOPIFY_STORE_URL
+
+        # Initialize with defaults, will be overridden by set_store_context
+        self.access_token = self.default_access_token
+        self.store_url = self.default_store_url
+        self._update_headers() # Initial header setup
+
+    def _update_headers(self):
+        """Internal method to update headers based on current token and URL."""
+        temp_url = self.store_url
+
+        if temp_url:
+            # Ensure the URL starts with https://
+            if not temp_url.startswith(('http://', 'https://')):
+                temp_url = f"https://{temp_url}"
+            
+            # Remove trailing slash from store URL if present
+            if temp_url.endswith('/'):
+                temp_url = temp_url[:-1]
+
         self.headers = {
             'X-Shopify-Access-Token': self.access_token,
             'Content-Type': 'application/json'
         }
-    
+        # Update the store_url attribute after potential modification
+        self.store_url = temp_url
+
+    def set_store_context(self, store):
+        """Set the Shopify credentials based on the provided store object. Returns True if successful."""
+        if store and store.access_token and store.url:
+            self.access_token = store.access_token
+            self.store_url = store.url
+            self._update_headers()
+            print(f"ShopifyIntegration context set for store: {store.name} ({self.store_url})") # Debugging
+            return True
+        else:
+            # Clear context if store is invalid or lacks credentials
+            self.access_token = None
+            self.store_url = None
+            self.headers = {}
+            store_name = store.name if store else 'None'
+            print(f"ShopifyIntegration context FAILED for store: {store_name}. Missing credentials.") # Debugging
+            return False
+
     def is_configured(self):
-        """Check if Shopify integration is configured."""
+        """Check if Shopify integration is currently configured with valid credentials."""
+        # This now checks the *currently set* context
         return bool(self.access_token and self.store_url)
     
     def get_products(self, limit=50):
@@ -291,19 +326,27 @@ class ShopifyIntegration:
         
         return {'products': all_products}
     
-    def import_products_from_shopify(self, db, current_store=None):
+    def import_products_from_shopify(self, db, current_store=None): # Keep current_store for association
         """Import products from Shopify to the local database."""
+        # is_configured() now checks the context set by set_store_context
         if not self.is_configured():
-            return {'error': 'Shopify integration not configured', 'imported': 0}
-        
-        print("Starting import from Shopify...")
-        shopify_products = self.get_all_products()
-        
+            error_msg = 'Shopify integration not configured for the selected store.'
+            if current_store:
+                 error_msg += f' Please check credentials for store "{current_store.name}".'
+            return {'error': error_msg, 'imported': 0}
+
+        print(f"Starting import from Shopify for store: {self.store_url}...")
+        shopify_products = self.get_all_products() # Uses the currently set context
+
         if 'error' in shopify_products:
-            return shopify_products
-        
+            # Add context to the error
+            error_msg = shopify_products['error']
+            if current_store:
+                 error_msg += f' (Store: "{current_store.name}")'
+            return {'error': error_msg, 'imported': 0}
+
         products = shopify_products.get('products', [])
-        print(f"Found {len(products)} products in Shopify")
+        print(f"Found {len(products)} products in Shopify store: {self.store_url}")
         
         imported_count = 0
         updated_count = 0
@@ -401,14 +444,18 @@ class ShopifyIntegration:
             'total': len(shopify_products.get('products', []))
         }
     
-    def export_product_to_shopify(self, product):
+    def export_product_to_shopify(self, product, current_store=None): # Add current_store for context
         """Export a product from the local database to Shopify."""
+        # is_configured() now checks the context set by set_store_context
         if not self.is_configured():
-            return {'error': 'Shopify integration not configured'}
-        
+            error_msg = 'Shopify integration not configured for the selected store.'
+            if current_store:
+                 error_msg += f' Please check credentials for store "{current_store.name}".'
+            return {'error': error_msg}
+
         # Get tags as a comma-separated string
         tag_string = ",".join([tag.name for tag in product.tags])
-        print(f"Exporting product {product.title} with tags: {tag_string}")
+        print(f"Exporting product {product.title} to store {self.store_url} with tags: {tag_string}")
         
         # Check if product already exists in Shopify
         if product.shopify_id:
@@ -495,17 +542,25 @@ class ShopifyIntegration:
         
         return result
     
-    def import_collections_from_shopify(self, db, current_store=None):
+    def import_collections_from_shopify(self, db, current_store=None): # Keep current_store for association
         """Import collections from Shopify to the local database."""
+        # is_configured() now checks the context set by set_store_context
         if not self.is_configured():
-            return {'error': 'Shopify integration not configured', 'imported': 0}
-        
-        print("Starting import of collections from Shopify...")
-        shopify_collections = self.get_all_collections()
-        
+            error_msg = 'Shopify integration not configured for the selected store.'
+            if current_store:
+                 error_msg += f' Please check credentials for store "{current_store.name}".'
+            return {'error': error_msg, 'imported': 0, 'updated': 0} # Add updated key
+
+        print(f"Starting import of collections from Shopify for store: {self.store_url}...")
+        shopify_collections = self.get_all_collections() # Uses the currently set context
+
         if 'error' in shopify_collections:
-            return shopify_collections
-        
+            # Add context to the error
+            error_msg = shopify_collections['error']
+            if current_store:
+                 error_msg += f' (Store: "{current_store.name}")'
+            return {'error': error_msg, 'imported': 0, 'updated': 0} # Add updated key
+
         collections = shopify_collections.get('collections', [])
         print(f"Found {len(collections)} collections in Shopify")
         
@@ -611,11 +666,17 @@ class ShopifyIntegration:
         except requests.exceptions.RequestException as e:
             return {'error': str(e)}
     
-    def export_collection_to_shopify(self, collection):
+    def export_collection_to_shopify(self, collection, current_store=None): # Add current_store for context
         """Export a collection from the local database to Shopify."""
+        # is_configured() now checks the context set by set_store_context
         if not self.is_configured():
-            return {'error': 'Shopify integration not configured'}
-        
+            error_msg = 'Shopify integration not configured for the selected store.'
+            if current_store:
+                 error_msg += f' Please check credentials for store "{current_store.name}".'
+            return {'error': error_msg}
+
+        print(f"Exporting collection {collection.name} to store {self.store_url}...") # Add print statement
+
         # If this is a smart collection (based on a tag), create a smart collection in Shopify
         if collection.tag:
             # Create a smart collection with a rule based on the tag

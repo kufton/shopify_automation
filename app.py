@@ -1006,10 +1006,15 @@ def create_app():
     @app.route('/shopify/import-products', methods=['POST'])
     def import_products_from_shopify():
         """Import products from Shopify."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
+        # Now call the import function, which uses the set context
         result = shopify_service.import_products_from_shopify(db, current_store=g.current_store)
         
         if 'error' in result:
@@ -1022,10 +1027,15 @@ def create_app():
     @app.route('/shopify/import-collections', methods=['POST'])
     def import_collections_from_shopify():
         """Import collections from Shopify."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
+        # Now call the import function, which uses the set context
         result = shopify_service.import_collections_from_shopify(db, current_store=g.current_store)
         
         if 'error' in result:
@@ -1038,12 +1048,17 @@ def create_app():
     @app.route('/shopify/export-product/<int:id>', methods=['POST'])
     def export_product_to_shopify(id):
         """Export a product to Shopify."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
         product = Product.query.get_or_404(id)
-        result = shopify_service.export_product_to_shopify(product)
+        # Pass current_store for context in the service method as well
+        result = shopify_service.export_product_to_shopify(product, current_store=g.current_store)
         
         if 'error' in result:
             flash(f'Error exporting product to Shopify: {result["error"]}', 'danger')
@@ -1060,9 +1075,13 @@ def create_app():
     @app.route('/shopify/export-collection/<int:id>', methods=['POST'])
     def export_collection_to_shopify(id):
         """Export a collection to Shopify."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
         collection = Collection.query.get_or_404(id)
         
@@ -1076,13 +1095,15 @@ def create_app():
             original_products = collection.products
             collection.products = products
             
-            result = shopify_service.export_collection_to_shopify(collection)
+            # Pass current_store for context
+            result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
             
             # Restore original products
             collection.products = original_products
         else:
             # For regular collections, use the existing products
-            result = shopify_service.export_collection_to_shopify(collection)
+            # Pass current_store for context
+            result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
         
         if 'error' in result:
             flash(f'Error exporting collection to Shopify: {result["error"]}', 'danger')
@@ -1099,9 +1120,13 @@ def create_app():
     @app.route('/shopify/export-collections/selected', methods=['POST'])
     def export_selected_collections_to_shopify():
         """Export selected collections to Shopify with SEO optimization."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
         # Get selected collection IDs
         collection_ids = request.form.getlist('collection_ids')
@@ -1160,7 +1185,8 @@ def create_app():
                 """
                 collection.meta_description = f"Shop our premium {collection.tag.name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
 
-                result = shopify_service.export_collection_to_shopify(collection)
+                # Pass current_store for context
+                result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
                 
                 # Restore original products
                 collection.products = original_products
@@ -1192,7 +1218,8 @@ def create_app():
                 """
                 collection.meta_description = f"Shop our premium {base_name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
 
-                result = shopify_service.export_collection_to_shopify(collection)
+                # Pass current_store for context
+                result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
             
             if 'error' not in result:
                 # Update collection with Shopify ID
@@ -1214,12 +1241,19 @@ def create_app():
     @app.route('/shopify/export-all-collections', methods=['POST'])
     def export_all_collections_to_shopify():
         """Export all collections to Shopify."""
-        if not shopify_service.is_configured():
-            flash('Shopify integration not configured. Please set Shopify credentials in environment variables.', 'danger')
-            return redirect(url_for('env_vars'))
+        # Set the Shopify context for the current store
+        if not g.current_store or not shopify_service.set_store_context(g.current_store):
+            store_name = g.current_store.name if g.current_store else "No store selected"
+            flash(f'Shopify integration not configured for store "{store_name}". Please check store credentials.', 'danger')
+            # Redirect to stores page or env vars depending on context
+            redirect_target = 'stores' if g.current_store else 'env_vars'
+            return redirect(url_for(redirect_target))
         
-        # Get all collections that haven't been exported yet
-        collections = Collection.query.filter(Collection.shopify_id.is_(None)).all()
+        # Get all collections that haven't been exported yet (filtered by store)
+        collections_query = Collection.query.filter(Collection.shopify_id.is_(None))
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        collections = collections_query.all()
         
         if not collections:
             flash('No collections available to export. All collections may already be exported to Shopify.', 'warning')
@@ -1239,13 +1273,15 @@ def create_app():
                 original_products = collection.products
                 collection.products = products
                 
-                result = shopify_service.export_collection_to_shopify(collection)
+                # Pass current_store for context
+                result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
                 
                 # Restore original products
                 collection.products = original_products
             else:
                 # For regular collections, use the existing products
-                result = shopify_service.export_collection_to_shopify(collection)
+                # Pass current_store for context
+                result = shopify_service.export_collection_to_shopify(collection, current_store=g.current_store)
             
             if 'error' not in result:
                 # Update collection with Shopify ID
