@@ -22,6 +22,16 @@ def run_migrations(app):
     with app.app_context():
         try:
             print("Running database migrations...")
+
+            # Ensure all tables are created (including cleanup_rules)
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(text("SELECT id FROM cleanup_rules LIMIT 1"))
+                print("cleanup_rules table exists.")
+            except OperationalError:
+                print("cleanup_rules table not found. Running db.create_all()...")
+                db.create_all()
+                print("db.create_all() completed.")
             
             # Check if store_id column exists in products table
             try:
@@ -101,6 +111,16 @@ def run_migrations(app):
                 print("Adding shopify_id column to products table")
                 with db.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE products ADD COLUMN shopify_id TEXT"))
+
+            # Check if cleaned_title column exists in products table
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(text("SELECT cleaned_title FROM products LIMIT 1"))
+                print("cleaned_title column exists in products table")
+            except OperationalError:
+                print("Adding cleaned_title column to products table")
+                with db.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE products ADD COLUMN cleaned_title TEXT"))
             
             print("Database migrations completed successfully")
             return True

@@ -51,6 +51,11 @@
                             <i class="fas fa-store"></i> Stores
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'cleanup_rules' %}active{% endif %}" href="{{ url_for('cleanup_rules') }}">
+                            <i class="fas fa-broom"></i> Cleanup Rules
+                        </a>
+                    </li>
                 </ul>
             </div>
             

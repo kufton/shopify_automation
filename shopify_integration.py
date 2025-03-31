@@ -578,6 +578,9 @@ class ShopifyIntegration:
             normalized_url = normalize_url(self.store_url)
             store = Store.query.filter_by(url=normalized_url).first()
         
+        # Fetch cleanup rules for this store
+        cleanup_rules = CleanupRule.query.filter_by(store_id=store.id).order_by(CleanupRule.priority).all() if store else []
+        
         for shopify_collection in collections:
             # Extract collection data
             collection_id = str(shopify_collection.get('id'))
@@ -585,6 +588,18 @@ class ShopifyIntegration:
             collection_handle = shopify_collection.get('handle', '')
             collection_body_html = shopify_collection.get('body_html', '')
             
+        # Apply cleanup rules to the collection description
+        for rule in cleanup_rules:
+            if rule.is_regex:
+                collection_body_html = re.sub(re.escape(rule.pattern), rule.replacement, collection_body_html, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            else:
+                collection_body_html = collection_body_html.replace(rule.pattern, rule.replacement, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            
+            # Ensure the cleanup rule is applied to all occurrences
+            collection_body_html = re.sub(re.escape(rule.pattern), rule.replacement, collection_body_html, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            
+            # Apply cleanup rules to the collection description again to ensure all occurrences are replaced
+            collection_body_html = re.sub(re.escape(rule.pattern), rule.replacement, collection_body_html, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
             # Check if collection already exists in database
             existing_collection = Collection.query.filter_by(shopify_id=collection_id).first()
             

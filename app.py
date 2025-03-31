@@ -4,14 +4,46 @@ from flask import Flask, render_template, redirect, url_for, flash, request, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import func
-from models import db, Product, Tag, Collection, EnvVar, product_tags, Store
-from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm
+from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule # Added CleanupRule
+from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm, CleanupRuleForm # Added CleanupRuleForm
 from claude_integration import ClaudeTaggingService
+import re # Added re import
 from shopify_integration import ShopifyIntegration
 from store_management import get_current_store, set_current_store, filter_query_by_store, get_all_stores
 from config import Config
 from auto_migrate import run_migrations
 import json
+import re # Make sure re is imported if not already done by previous step
+
+# Helper function to apply cleanup rules
+def apply_cleanup_rules(input_text):
+    """Applies cleanup rules for the current store to the input text."""
+    if not g.current_store or not input_text:
+        return input_text
+
+    rules = CleanupRule.query.filter_by(store_id=g.current_store.id).order_by(CleanupRule.priority).all()
+    
+    cleaned_text = input_text
+    for rule in rules:
+        try:
+            # Determine the actual replacement value, handling the '' case for empty string
+            actual_replacement = "" if rule.replacement == "''" else rule.replacement
+            
+            if rule.is_regex:
+                # Use actual_replacement for the regex substitution
+                cleaned_text = re.sub(rule.pattern, actual_replacement, cleaned_text)
+            else:
+                # Use actual_replacement for the simple string replacement
+                cleaned_text = cleaned_text.replace(rule.pattern, actual_replacement)
+        except re.error as e:
+            print(f"Error applying regex rule (ID: {rule.id}, Pattern: {rule.pattern}): {e}")
+            # Optionally skip this rule or handle the error differently
+            continue
+        except Exception as e:
+            print(f"Error applying rule (ID: {rule.id}): {e}")
+            continue # Skip rule on error
+    
+    return cleaned_text.strip() # Remove leading/trailing whitespace
 
 def create_app():
     """Create and configure the Flask application."""
@@ -585,11 +617,11 @@ def create_app():
                     # Check the new slug
                     slug_query = Collection.query.filter_by(slug=slug)
                 
-                # Get product titles for meta description
-                product_titles = [p.title for p in tag.products[:5]]
-                product_titles_text = ", ".join(product_titles)
-                if len(product_titles) < len(tag.products):
-                    product_titles_text += f", and {len(tag.products) - len(product_titles)} more"
+                # Get cleaned product titles for meta description
+                cleaned_product_titles = [apply_cleanup_rules(p.title) for p in tag.products[:5]]
+                product_titles_text = ", ".join(cleaned_product_titles)
+                if len(cleaned_product_titles) < len(tag.products):
+                    product_titles_text += f", and {len(tag.products) - len(cleaned_product_titles)} more"
                 
                 # Get product examples for description generation
                 product_examples = [
@@ -603,11 +635,13 @@ def create_app():
                 # Generate SEO-optimized title
                 title = f"{tag.name.title()} Collection | Shop Premium {tag.name.title()}"
                 
-                # Get product examples for description
+                # Get cleaned product examples for description
                 product_examples = tag.products[:3]
                 example_text = ""
                 if product_examples:
-                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    # Apply cleanup rules to titles before joining
+                    cleaned_titles = [apply_cleanup_rules(p.title) for p in product_examples]
+                    example_text = "Featuring " + ", ".join(cleaned_titles)
                     if len(tag.products) > 3:
                         example_text += f" and {len(tag.products) - 3} more items"
                 
@@ -1163,7 +1197,9 @@ def create_app():
                 product_examples = products[:3]
                 example_text = ""
                 if product_examples:
-                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    # Apply cleanup rules to titles before joining
+                    cleaned_titles = [apply_cleanup_rules(p.title) for p in product_examples]
+                    example_text = "Featuring " + ", ".join(cleaned_titles)
                     if len(products) > 3:
                         example_text += f" and {len(products) - 3} more items"
 
@@ -1195,7 +1231,9 @@ def create_app():
                 product_examples = collection.products[:3]
                 example_text = ""
                 if product_examples:
-                    example_text = "Featuring " + ", ".join(p.title for p in product_examples)
+                    # Apply cleanup rules to titles before joining
+                    cleaned_titles = [apply_cleanup_rules(p.title) for p in product_examples]
+                    example_text = "Featuring " + ", ".join(cleaned_titles)
                     if len(collection.products) > 3:
                         example_text += f" and {len(collection.products) - 3} more items"
 
@@ -1398,6 +1436,159 @@ def create_app():
             flash('Store not found.', 'danger')
         
         return redirect(url_for('index'))
+
+    # --- Add Cleanup Rule Routes ---
+
+    @app.route('/cleanup-rules')
+    def cleanup_rules():
+        """List all cleanup rules for the current store."""
+        if not g.current_store:
+            flash('Please select a store first.', 'warning')
+            return redirect(url_for('stores'))
+            
+        rules = CleanupRule.query.filter_by(store_id=g.current_store.id).order_by(CleanupRule.priority).all()
+        # Pass the form for the 'Add Rule' button in the template
+        form = CleanupRuleForm()
+        return render_template('cleanup_rules.html', rules=rules, form=form, title='Cleanup Rules')
+
+    @app.route('/cleanup-rules/add', methods=['GET', 'POST'])
+    def add_cleanup_rule():
+        """Add a new cleanup rule for the current store."""
+        if not g.current_store:
+            flash('Please select a store first.', 'warning')
+            return redirect(url_for('stores'))
+            
+        form = CleanupRuleForm()
+        if form.validate_on_submit():
+            rule = CleanupRule(
+                store_id=g.current_store.id,
+                pattern=form.pattern.data,
+                replacement=form.replacement.data,
+                is_regex=form.is_regex.data,
+                priority=form.priority.data or 0 # Default priority to 0 if not provided
+            )
+            db.session.add(rule)
+            db.session.commit()
+            flash('Cleanup rule added successfully.', 'success')
+            return redirect(url_for('cleanup_rules'))
+        # If GET or validation fails, render the form page
+        return render_template('cleanup_rule_form.html', form=form, title='Add Cleanup Rule')
+
+    @app.route('/cleanup-rules/<int:id>/edit', methods=['GET', 'POST'])
+    def edit_cleanup_rule(id):
+        """Edit an existing cleanup rule."""
+        rule = CleanupRule.query.get_or_404(id)
+        # Ensure the rule belongs to the current store
+        if not g.current_store or rule.store_id != g.current_store.id:
+            flash('Rule not found or access denied.', 'danger')
+            return redirect(url_for('cleanup_rules'))
+            
+        form = CleanupRuleForm(obj=rule)
+        if form.validate_on_submit():
+            form.populate_obj(rule)
+            rule.priority = form.priority.data or 0 # Default priority
+            db.session.commit()
+            flash('Cleanup rule updated successfully.', 'success')
+            return redirect(url_for('cleanup_rules'))
+        return render_template('cleanup_rule_form.html', form=form, title='Edit Cleanup Rule', rule_id=id) # Pass rule_id for form action
+
+    @app.route('/cleanup-rules/<int:id>/delete', methods=['POST'])
+    def delete_cleanup_rule(id):
+        """Delete a cleanup rule."""
+        rule = CleanupRule.query.get_or_404(id)
+        # Ensure the rule belongs to the current store
+        if not g.current_store or rule.store_id != g.current_store.id:
+            flash('Rule not found or access denied.', 'danger')
+            return redirect(url_for('cleanup_rules'))
+            
+        db.session.delete(rule)
+        db.session.commit()
+        flash('Cleanup rule deleted successfully.', 'success')
+        return redirect(url_for('cleanup_rules'))
+
+    # --- End Cleanup Rule Routes ---
+
+    # --- Add Bulk Apply Cleanup Route ---
+
+    @app.route('/collections/apply-cleanup-rules', methods=['POST'])
+    def apply_rules_to_collections():
+        """Bulk apply cleanup rules to existing collection descriptions and meta descriptions."""
+        if not g.current_store:
+            flash('Please select a store first.', 'warning')
+            return redirect(url_for('stores'))
+
+        collections_query = Collection.query.filter_by(store_id=g.current_store.id)
+        collections = collections_query.all()
+        
+        updated_count = 0
+        for collection in collections:
+            products_to_consider = []
+            base_name = ""
+
+            if collection.tag:
+                # Smart collection: use products associated with the tag
+                products_to_consider = Product.query.join(Product.tags).filter(
+                    Tag.id == collection.tag_id,
+                    Product.store_id == g.current_store.id # Ensure products are from the same store
+                ).all()
+                base_name = collection.tag.name.title()
+            else:
+                # Regular collection: use explicitly linked products
+                # Ensure products are loaded and filtered by store if necessary (though they should be)
+                products_to_consider = [p for p in collection.products if p.store_id == g.current_store.id]
+                # Try to derive a base name from the collection name
+                base_name = collection.name.replace(" Collection", "").replace("Shop Premium ", "").strip()
+
+            if not products_to_consider:
+                continue # Skip collections with no relevant products
+
+            # Generate example text with cleaned titles
+            product_examples = products_to_consider[:3]
+            example_text = ""
+            if product_examples:
+                cleaned_titles = [apply_cleanup_rules(p.title) for p in product_examples]
+                example_text = "Featuring " + ", ".join(cleaned_titles)
+                if len(products_to_consider) > 3:
+                    example_text += f" and {len(products_to_consider) - 3} more items"
+
+            # Regenerate SEO content using cleaned example_text
+            # Only update if base_name is meaningful
+            if base_name:
+                # Regenerate description
+                collection.description = f"""
+                <h1>Premium {base_name} Collection</h1>
+                <p>Discover our exclusive collection of {base_name} products, carefully curated to bring you the finest selection. {example_text}.</p>
+                <h2>Why Shop Our {base_name} Collection?</h2>
+                <ul>
+                    <li>Handpicked selection of premium {base_name} products</li>
+                    <li>High-quality materials and expert craftsmanship</li>
+                    <li>Trendy and timeless designs for every style</li>
+                    <li>Fast shipping and excellent customer service</li>
+                </ul>
+                <h2>About Our {base_name} Products</h2>
+                <p>Each item in our {base_name} collection is selected for its quality, style, and value. Whether you're looking for everyday essentials or statement pieces, you'll find the perfect {base_name} to suit your needs.</p>
+                <p>Shop our {base_name} collection today and experience the difference quality makes.</p>
+                """
+                # Regenerate meta description
+                collection.meta_description = f"Shop our premium {base_name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
+                
+                # Mark the object as modified for SQLAlchemy
+                db.session.add(collection)
+                updated_count += 1
+
+        if updated_count > 0:
+            try:
+                db.session.commit()
+                flash(f'Successfully applied cleanup rules to {updated_count} collections.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error applying rules: {str(e)}', 'danger')
+        else:
+            flash('No collections were updated. They might already be up-to-date or have no associated products.', 'info')
+
+        return redirect(url_for('collections'))
+
+    # --- End Bulk Apply Cleanup Route ---
     
     return app
 

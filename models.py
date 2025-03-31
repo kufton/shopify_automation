@@ -32,6 +32,8 @@ class Store(db.Model):
     products = db.relationship('Product', backref='store', lazy=True)
     collections = db.relationship('Collection', backref='store', lazy=True)
     tags = db.relationship('Tag', backref='store', lazy=True)
+    credentials = db.relationship('StoreCredentials', backref='store', lazy=True)
+    cleanup_rules = db.relationship('CleanupRule', backref='store', lazy=True)
     
     def __repr__(self):
         return f'<Store {self.name}>'
@@ -55,6 +57,7 @@ class Product(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
+    cleaned_title = db.Column(db.String(255))
     description = db.Column(db.Text)
     price = db.Column(db.Float)
     image_url = db.Column(db.String(500))
@@ -76,6 +79,7 @@ class Product(db.Model):
         return {
             'id': self.id,
             'title': self.title,
+            'cleaned_title': self.cleaned_title,
             'description': self.description,
             'price': self.price,
             'image_url': self.image_url,
@@ -160,3 +164,33 @@ class EnvVar(db.Model):
     
     def __repr__(self):
         return f'<EnvVar {self.key}>'
+
+class StoreCredentials(db.Model):
+    """Store credentials model."""
+    __tablename__ = 'store_credentials'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
+    key = db.Column(db.String(255), nullable=False)
+    value = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<StoreCredentials {self.key}>'
+
+class CleanupRule(db.Model):
+    """Cleanup rule model."""
+    __tablename__ = 'cleanup_rules'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
+    pattern = db.Column(db.String(255), nullable=False)
+    replacement = db.Column(db.String(255), nullable=False)
+    is_regex = db.Column(db.Boolean, default=False)
+    priority = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<CleanupRule {self.pattern}>'

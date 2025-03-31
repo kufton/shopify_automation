@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, FloatField, SubmitField, HiddenField, BooleanField, SelectField
-from wtforms.validators import DataRequired, URL, Optional, Length
+from wtforms import StringField, TextAreaField, FloatField, SubmitField, HiddenField, BooleanField, SelectField, IntegerField
+from wtforms.validators import DataRequired, URL, Optional, Length, NumberRange
 
 class ProductForm(FlaskForm):
     """Form for adding or editing a product."""
@@ -51,3 +51,11 @@ class StoreSelectForm(FlaskForm):
     """Form for selecting the current store."""
     store_id = SelectField('Select Store', coerce=int)
     submit = SubmitField('Switch Store')
+
+class CleanupRuleForm(FlaskForm):
+    """Form for adding or editing cleanup rules."""
+    pattern = StringField('Pattern to Find', validators=[DataRequired(), Length(max=255)])
+    replacement = StringField('Replace With', validators=[DataRequired(message="Replacement cannot be empty, use '' for removing."), Length(max=255)])
+    is_regex = BooleanField('Use Regular Expression')
+    priority = IntegerField('Priority (Lower number runs first)', default=0, validators=[Optional(), NumberRange(min=0)])
+    submit = SubmitField('Save Rule')

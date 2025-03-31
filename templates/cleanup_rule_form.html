@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">{{ title }}</h1>
+
+    <form method="POST" action="{{ url_for('add_cleanup_rule') if title == 'Add Cleanup Rule' else url_for('edit_cleanup_rule', id=rule_id) }}">
+        {{ form.csrf_token }}
+        
+        <div class="mb-3">
+            {{ form.pattern.label(class="form-label") }}
+            {{ form.pattern(class="form-control", placeholder="e.g., \\s*:.+|FINAL SALE!.*") }}
+            {% if form.pattern.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ form.pattern.errors|join(', ') }}
+                </div>
+            {% endif %}
+            <small class="form-text text-muted">The text or pattern to find in product titles.</small>
+        </div>
+
+        <div class="mb-3">
+            {{ form.replacement.label(class="form-label") }}
+            {{ form.replacement(class="form-control", placeholder="e.g., '' (empty string to remove)") }}
+             {% if form.replacement.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ form.replacement.errors|join(', ') }}
+                </div>
+            {% endif %}
+           <small class="form-text text-muted">What to replace the found pattern with. Use '' (two single quotes) to remove the pattern.</small>
+        </div>
+
+        <div class="mb-3 form-check">
+            {{ form.is_regex(class="form-check-input") }}
+            {{ form.is_regex.label(class="form-check-label") }}
+            <small class="form-text text-muted d-block">Check this box if the 'Pattern to Find' is a regular expression.</small>
+             {% if form.is_regex.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ form.is_regex.errors|join(', ') }}
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3">
+            {{ form.priority.label(class="form-label") }}
+            {{ form.priority(class="form-control", type="number", min="0", step="1") }}
+             {% if form.priority.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ form.priority.errors|join(', ') }}
+                </div>
+            {% endif %}
+            <small class="form-text text-muted">Rules with lower numbers run first (e.g., 0 runs before 1).</small>
+        </div>
+
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="{{ url_for('cleanup_rules') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

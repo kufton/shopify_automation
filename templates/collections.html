@@ -7,36 +7,42 @@
     <div class="col-md-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="section-heading">Collections</h1>
-            <div>
-                <a href="{{ url_for('add_collection') }}" class="btn btn-success me-2">
+            <div class="d-flex flex-wrap justify-content-end"> {# Added flex wrapper #}
+                <a href="{{ url_for('add_collection') }}" class="btn btn-success me-2 mb-2"> {# Added mb-2 #}
                     <i class="fas fa-plus"></i> Add Collection
                 </a>
-                <form action="{{ url_for('create_collections_from_tags') }}" method="post" class="d-inline-block me-2">
+                <form action="{{ url_for('create_collections_from_tags') }}" method="post" class="me-2 mb-2"> {# Removed d-inline-block, Added mb-2 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-warning">
                         <i class="fas fa-magic"></i> Create from Tags
                     </button>
                 </form>
-                <form action="{{ url_for('import_collections_from_shopify') }}" method="post" class="d-inline-block me-2">
+                <form action="{{ url_for('apply_rules_to_collections') }}" method="post" class="me-2 mb-2" onsubmit="return confirm('Are you sure you want to apply cleanup rules to all collections? This will regenerate descriptions and meta descriptions.');"> {# Removed d-inline-block, Added mb-2 #}
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary">
+                        <i class="fas fa-broom"></i> Apply Cleanup Rules
+                    </button>
+                </form>
+                <form action="{{ url_for('import_collections_from_shopify') }}" method="post" class="me-2 mb-2"> {# Removed d-inline-block, Added mb-2 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-info">
                         <i class="fas fa-download"></i> Import from Shopify
                     </button>
                 </form>
-                <form id="export-selected-form" action="{{ url_for('export_selected_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
+                <form id="export-selected-form" action="{{ url_for('export_selected_collections_to_shopify') }}" method="post" class="me-2 mb-2"> {# Removed d-inline-block, Added mb-2 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-success" id="export-selected-btn" disabled>
                         <i class="fas fa-upload"></i> Export Selected to Shopify
                         <span class="selected-count"></span>
                     </button>
                 </form>
-                <form action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
+                <form action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="me-2 mb-2"> {# Removed d-inline-block, Added mb-2 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-cloud-upload-alt"></i> Export All to Shopify
                     </button>
                 </form>
-                <form action="{{ url_for('delete_all_collections') }}" method="post" class="d-inline-block">
+                <form action="{{ url_for('delete_all_collections') }}" method="post" class="mb-2"> {# Removed d-inline-block, Added mb-2 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger delete-all-confirm">
                         <i class="fas fa-trash"></i> Delete All
@@ -173,12 +179,7 @@
                         <i class="fas fa-download"></i> Import from Shopify
                     </button>
                 </form>
-                <form action="{{ url_for('export_sample_collections_to_shopify') }}" method="post" class="d-inline-block me-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-upload"></i> Export 5 to Shopify
-                    </button>
-                </form>
+                {# Removed non-existent 'export_sample_collections_to_shopify' button #}
                 <form action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="d-inline-block">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-primary">
