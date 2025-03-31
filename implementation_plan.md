@@ -1,156 +1,131 @@
-# Implementation Plan: Store Credentials and Product Name Cleanup
+# SEO Enhancement Implementation Plan
 
 ## Overview
-This implementation plan addresses two main features:
-1. Store-specific Shopify credentials management
-2. Product name cleanup system with configurable rules
+This plan outlines the implementation of enhanced SEO features, focusing on meta fields, Open Graph tags, and Twitter Cards for products and collections.
 
-## Data Model Changes
+## Database Changes
 
-```mermaid
-classDiagram
-    Store "1" -- "*" StoreCredentials
-    Store "1" -- "*" Product
-    Store "1" -- "*" CleanupRule
-    class Store {
-        +id: Integer
-        +name: String
-        +url: String
-        +access_token: String
-        +created_at: DateTime
-        +updated_at: DateTime
-    }
-    class StoreCredentials {
-        +id: Integer
-        +store_id: Integer
-        +key: String
-        +value: String
-        +created_at: DateTime
-        +updated_at: DateTime
-    }
-    class CleanupRule {
-        +id: Integer
-        +store_id: Integer
-        +pattern: String
-        +replacement: String
-        +is_regex: Boolean
-        +priority: Integer
-        +created_at: DateTime
-        +updated_at: DateTime
-    }
-    class Product {
-        +id: Integer
-        +store_id: Integer
-        +title: String
-        +cleaned_title: String
-        +description: String
-        +price: Float
-        +shopify_id: String
-    }
+### 1. SEO Fields Mixin
+```python
+class SEOFields(object):
+    """Mixin for SEO fields"""
+    meta_title = db.Column(db.String(60))
+    meta_description = db.Column(db.String(160))
+    
+    # Open Graph
+    og_title = db.Column(db.String(95))
+    og_description = db.Column(db.String(200))
+    og_image = db.Column(db.String(500))
+    og_type = db.Column(db.String(50))
+    
+    # Twitter Cards
+    twitter_card = db.Column(db.String(15), default='summary_large_image')
+    twitter_title = db.Column(db.String(70))
+    twitter_description = db.Column(db.String(200))
+    twitter_image = db.Column(db.String(500))
+    
+    # Common
+    canonical_url = db.Column(db.String(500))
+    structured_data = db.Column(db.JSON)
 ```
 
-## 1. Store Credentials Management
+### 2. SEO Defaults Model
+```python
+class SEODefaults(db.Model):
+    """Store-level SEO defaults"""
+    __tablename__ = 'seo_defaults'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
+    entity_type = db.Column(db.String(50))  # 'product' or 'collection'
+    
+    # Templates
+    title_template = db.Column(db.String(255))
+    description_template = db.Column(db.String(500))
+    og_title_template = db.Column(db.String(255))
+    og_description_template = db.Column(db.String(500))
+    twitter_title_template = db.Column(db.String(255))
+    twitter_description_template = db.Column(db.String(500))
+```
 
-### New Model: StoreCredentials
-- Fields:
-  * id (Primary Key)
-  * store_id (Foreign Key to Store)
-  * key (e.g., 'shopify_access_token', 'shopify_api_key')
-  * value (encrypted credential value)
-  * created_at/updated_at timestamps
+## Form Updates
 
-### UI Changes
-- Add credentials section to store management page
-- Create form for adding/editing store credentials
-- Display current credentials with masked values
-- Add validation for required credentials
+### 1. SEO Form Mixin
+```python
+class SEOFormMixin:
+    meta_title = StringField('Meta Title', validators=[Length(max=60)])
+    meta_description = TextAreaField('Meta Description', validators=[Length(max=160)])
+    
+    og_title = StringField('OG Title', validators=[Length(max=95)])
+    og_description = TextAreaField('OG Description', validators=[Length(max=200)])
+    og_image = StringField('OG Image URL', validators=[Optional(), URL()])
+    
+    twitter_card = SelectField('Twitter Card Type', 
+        choices=[('summary', 'Summary'), ('summary_large_image', 'Large Image')])
+    twitter_title = StringField('Twitter Title', validators=[Length(max=70)])
+    twitter_description = TextAreaField('Twitter Description', validators=[Length(max=200)])
+    twitter_image = StringField('Twitter Image URL', validators=[Optional(), URL()])
+    
+    canonical_url = StringField('Canonical URL', validators=[Optional(), URL()])
+```
 
-### Integration Updates
-- Modify Shopify integration to use store-specific credentials
-- Update store creation/edit workflow
-- Add credential validation on store operations
-- Migrate existing env vars to store credentials
+## Template Variables
 
-## 2. Product Name Cleanup System
+### Available Variables
+- Products:
+  - `{title}`: Product title
+  - `{price}`: Product price
+  - `{store_name}`: Store name
+  - `{description_excerpt}`: First 100 chars of description
+  - `{primary_tag}`: First product tag
 
-### New Model: CleanupRule
-- Fields:
-  * id (Primary Key)
-  * store_id (Foreign Key to Store)
-  * pattern (text to match)
-  * replacement (text to replace with)
-  * is_regex (boolean)
-  * priority (integer)
-  * created_at/updated_at timestamps
+- Collections:
+  - `{name}`: Collection name
+  - `{product_count}`: Number of products
+  - `{example_products}`: First 3 product names
+  - `{store_name}`: Store name
+  - `{tag_name}`: Associated tag name (for smart collections)
 
-### Product Model Updates
-- Add cleaned_title field
-- Add methods for title cleanup
-- Update relevant queries to use cleaned_title
+### Default Templates
+```python
+default_templates = {
+    'product': {
+        'title': '{title} | {store_name}',
+        'description': 'Shop {title} at {store_name}. {description_excerpt}',
+        'og_title': '{title} - Available at {store_name}',
+        'twitter_title': 'Shop {title} at {store_name}'
+    },
+    'collection': {
+        'title': '{name} Collection | {store_name}',
+        'description': 'Explore our {name} collection. {product_count} products including {example_products}',
+        'og_title': 'Shop {name} Collection at {store_name}',
+        'twitter_title': '{name} Collection at {store_name}'
+    }
+}
+```
 
-### Cleanup Service
-- Create service to manage cleanup rules
-- Implement rule application logic:
-  * Apply rules in priority order
-  * Support both exact match and regex patterns
-  * Handle empty replacements (deletions)
-  * Cache compiled regex patterns
+## Implementation Steps
 
-### UI Implementation
-- Create cleanup rules management page:
-  * List existing rules
-  * Add/edit/delete rules
-  * Set rule priority
-  * Test rules on sample text
-- Add bulk cleanup action for existing products
-- Show original/cleaned titles in product list
-- Add cleanup preview in product forms
+1. **Database Updates**
+   - Add SEO fields to Product and Collection models
+   - Create SEODefaults table
+   - Create migration script
+   - Update existing records with defaults
 
-## Integration Points
+2. **Form Updates**
+   - Add SEO tab to product/collection forms
+   - Implement character counters
+   - Add preview cards for meta/social
+   - Add template variable substitution
 
-### Product Import/Update
-- Apply cleanup rules during Shopify import
-- Update product edit form to show both titles
-- Add bulk cleanup action for existing products
+3. **Template Updates**
+   - Update base.html with meta blocks
+   - Create SEO preview components
+   - Add social media preview cards
+   - Implement live preview functionality
 
-### Collection Creation
-- Use cleaned titles for:
-  * Collection names
-  * Product listings
-  * SEO content generation
-  * Tag generation
-
-### Tag System
-- Use cleaned titles for tag generation
-- Update tag management to show original/cleaned versions
-
-## Migration Path
-
-### Database Migrations
-1. Create StoreCredentials table
-2. Create CleanupRule table
-3. Add cleaned_title to Products table
-4. Add indexes for performance
-
-### Data Migration
-1. Move existing credentials to StoreCredentials
-2. Add initial set of common cleanup rules:
-   - "Final Sale!"
-   - "Cannot Be Returned!"
-   - Sale price patterns
-   - Common promotional text
-3. Run initial cleanup on existing products
-
-### Deployment Steps
-1. Run database migrations
-2. Execute data migrations
-3. Update application code
-4. Deploy UI changes
-5. Run cleanup on existing data
-
-## Testing Plan
-1. Unit tests for cleanup service
-2. Integration tests for credential management
-3. UI tests for new features
-4. Migration testing with sample data
-5. Performance testing for large datasets
+4. **Testing**
+   - Validate meta tag generation
+   - Test template variable substitution
+   - Verify character limits
+   - Test social media previews

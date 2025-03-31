@@ -61,6 +61,114 @@
                             </div>
                         {% endif %}
                     </div>
+
+                    <!-- SEO Settings Accordion -->
+                    <div class="accordion mt-4 mb-4" id="seoAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingSeo">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSeo" aria-expanded="false" aria-controls="collapseSeo">
+                                    <i class="fas fa-search me-2"></i> SEO & Social Media Settings
+                                </button>
+                            </h2>
+                            <div id="collapseSeo" class="accordion-collapse collapse" aria-labelledby="headingSeo" data-bs-parent="#seoAccordion">
+                                <div class="accordion-body">
+                                    <p class="text-muted small">Configure how this product appears in search results and on social media platforms.</p>
+                                    
+                                    <div class="mb-3">
+                                        <label for="meta_title" class="form-label">{{ form.meta_title.label }}</label>
+                                        {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else ""), id="meta_title", placeholder="Enter meta title (max 60 chars)") }}
+                                        {% if form.meta_title.errors %}
+                                            <div class="invalid-feedback">{{ form.meta_title.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="meta_description" class="form-label">{{ form.meta_description.label }}</label>
+                                        {{ form.meta_description(class="form-control" + (" is-invalid" if form.meta_description.errors else ""), id="meta_description", rows="3", placeholder="Enter meta description (max 160 chars)") }}
+                                        {% if form.meta_description.errors %}
+                                            <div class="invalid-feedback">{{ form.meta_description.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <hr>
+                                    <h5>Open Graph (Facebook, LinkedIn, etc.)</h5>
+                                    
+                                    <div class="mb-3">
+                                        <label for="og_title" class="form-label">{{ form.og_title.label }}</label>
+                                        {{ form.og_title(class="form-control" + (" is-invalid" if form.og_title.errors else ""), id="og_title", placeholder="Enter Open Graph title (max 95 chars)") }}
+                                        {% if form.og_title.errors %}
+                                            <div class="invalid-feedback">{{ form.og_title.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="og_description" class="form-label">{{ form.og_description.label }}</label>
+                                        {{ form.og_description(class="form-control" + (" is-invalid" if form.og_description.errors else ""), id="og_description", rows="3", placeholder="Enter Open Graph description (max 200 chars)") }}
+                                        {% if form.og_description.errors %}
+                                            <div class="invalid-feedback">{{ form.og_description.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="og_image" class="form-label">{{ form.og_image.label }}</label>
+                                        {{ form.og_image(class="form-control" + (" is-invalid" if form.og_image.errors else ""), id="og_image", placeholder="Enter Open Graph image URL") }}
+                                        {% if form.og_image.errors %}
+                                            <div class="invalid-feedback">{{ form.og_image.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <hr>
+                                    <h5>Twitter Card</h5>
+
+                                    <div class="mb-3">
+                                        <label for="twitter_card" class="form-label">{{ form.twitter_card.label }}</label>
+                                        {{ form.twitter_card(class="form-select" + (" is-invalid" if form.twitter_card.errors else ""), id="twitter_card") }}
+                                        {% if form.twitter_card.errors %}
+                                            <div class="invalid-feedback">{{ form.twitter_card.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="twitter_title" class="form-label">{{ form.twitter_title.label }}</label>
+                                        {{ form.twitter_title(class="form-control" + (" is-invalid" if form.twitter_title.errors else ""), id="twitter_title", placeholder="Enter Twitter title (max 70 chars)") }}
+                                        {% if form.twitter_title.errors %}
+                                            <div class="invalid-feedback">{{ form.twitter_title.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="twitter_description" class="form-label">{{ form.twitter_description.label }}</label>
+                                        {{ form.twitter_description(class="form-control" + (" is-invalid" if form.twitter_description.errors else ""), id="twitter_description", rows="3", placeholder="Enter Twitter description (max 200 chars)") }}
+                                        {% if form.twitter_description.errors %}
+                                            <div class="invalid-feedback">{{ form.twitter_description.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="twitter_image" class="form-label">{{ form.twitter_image.label }}</label>
+                                        {{ form.twitter_image(class="form-control" + (" is-invalid" if form.twitter_image.errors else ""), id="twitter_image", placeholder="Enter Twitter image URL") }}
+                                        {% if form.twitter_image.errors %}
+                                            <div class="invalid-feedback">{{ form.twitter_image.errors|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <hr>
+                                    <h5>Advanced</h5>
+
+                                     <div class="mb-3">
+                                        <label for="canonical_url" class="form-label">{{ form.canonical_url.label }}</label>
+                                        {{ form.canonical_url(class="form-control" + (" is-invalid" if form.canonical_url.errors else ""), id="canonical_url", placeholder="Enter canonical URL if different from product page") }}
+                                        {% if form.canonical_url.errors %}
+                                            <div class="invalid-feedback">{{ form.canonical_url.errors|join(', ') }}</div>
+                                        {% endif %}
+                                        <small class="form-text text-muted">Leave blank unless this product content exists on another primary URL.</small>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- End SEO Settings Accordion -->
                     
                     <div class="d-flex justify-content-between">
                         <a href="{{ url_for('products') }}" class="btn btn-secondary">

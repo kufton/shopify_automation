@@ -2,13 +2,35 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, FloatField, SubmitField, HiddenField, BooleanField, SelectField, IntegerField
 from wtforms.validators import DataRequired, URL, Optional, Length, NumberRange
 
-class ProductForm(FlaskForm):
+# --- SEO Form Mixin ---
+class SEOFormMixin:
+    meta_title = StringField('Meta Title (Max 60 chars)', validators=[Optional(), Length(max=60)])
+    meta_description = TextAreaField('Meta Description (Max 160 chars)', validators=[Optional(), Length(max=160)])
+    
+    og_title = StringField('Open Graph Title (Max 95 chars)', validators=[Optional(), Length(max=95)])
+    og_description = TextAreaField('Open Graph Description (Max 200 chars)', validators=[Optional(), Length(max=200)])
+    og_image = StringField('Open Graph Image URL', validators=[Optional(), URL()])
+    
+    twitter_card = SelectField('Twitter Card Type', 
+        choices=[('summary', 'Summary'), ('summary_large_image', 'Summary with Large Image')], 
+        default='summary_large_image', validators=[Optional()])
+    twitter_title = StringField('Twitter Title (Max 70 chars)', validators=[Optional(), Length(max=70)])
+    twitter_description = TextAreaField('Twitter Description (Max 200 chars)', validators=[Optional(), Length(max=200)])
+    twitter_image = StringField('Twitter Image URL', validators=[Optional(), URL()])
+    
+    canonical_url = StringField('Canonical URL', validators=[Optional(), URL()])
+
+class ProductForm(FlaskForm, SEOFormMixin): # Added SEOFormMixin
     """Form for adding or editing a product."""
+    # Basic Info
     title = StringField('Title', validators=[DataRequired(), Length(max=255)])
     description = TextAreaField('Description', validators=[Optional()])
     price = FloatField('Price', validators=[Optional()])
     image_url = StringField('Image URL', validators=[Optional(), URL()])
-    submit = SubmitField('Save')
+    
+    # SEO Fields are inherited from SEOFormMixin
+    
+    submit = SubmitField('Save Product')
 
 class EnvVarForm(FlaskForm):
     """Form for adding or editing environment variables."""
@@ -17,14 +39,18 @@ class EnvVarForm(FlaskForm):
     description = TextAreaField('Description', validators=[Optional()])
     submit = SubmitField('Save')
 
-class CollectionForm(FlaskForm):
+class CollectionForm(FlaskForm, SEOFormMixin): # Added SEOFormMixin
     """Form for creating or editing a collection."""
+    # Basic Info
     name = StringField('Name', validators=[DataRequired(), Length(max=255)])
     slug = StringField('Slug', validators=[Optional(), Length(max=255)])
     description = TextAreaField('Description', validators=[Optional()])
-    meta_description = TextAreaField('Meta Description (for SEO)', validators=[Optional(), Length(max=160)])
-    tag_id = HiddenField('Tag ID')
-    submit = SubmitField('Save')
+    # meta_description = TextAreaField('Meta Description (for SEO)', validators=[Optional(), Length(max=160)]) # Removed, now in mixin
+    tag_id = HiddenField('Tag ID') # For smart collections
+    
+    # SEO Fields are inherited from SEOFormMixin
+    
+    submit = SubmitField('Save Collection')
 
 class TagForm(FlaskForm):
     """Form for adding a tag manually."""
@@ -59,3 +85,24 @@ class CleanupRuleForm(FlaskForm):
     is_regex = BooleanField('Use Regular Expression')
     priority = IntegerField('Priority (Lower number runs first)', default=0, validators=[Optional(), NumberRange(min=0)])
     submit = SubmitField('Save Rule')
+
+# --- Add SEODefaults Form ---
+class SEODefaultsForm(FlaskForm):
+    """Form for editing SEO default templates."""
+    # Product Templates
+    product_title_template = StringField('Product Title Template', validators=[Optional(), Length(max=255)])
+    product_description_template = TextAreaField('Product Meta Description Template', validators=[Optional(), Length(max=500)])
+    product_og_title_template = StringField('Product OG Title Template', validators=[Optional(), Length(max=255)])
+    product_og_description_template = TextAreaField('Product OG Description Template', validators=[Optional(), Length(max=500)])
+    product_twitter_title_template = StringField('Product Twitter Title Template', validators=[Optional(), Length(max=255)])
+    product_twitter_description_template = TextAreaField('Product Twitter Description Template', validators=[Optional(), Length(max=500)])
+    
+    # Collection Templates
+    collection_title_template = StringField('Collection Title Template', validators=[Optional(), Length(max=255)])
+    collection_description_template = TextAreaField('Collection Meta Description Template', validators=[Optional(), Length(max=500)])
+    collection_og_title_template = StringField('Collection OG Title Template', validators=[Optional(), Length(max=255)])
+    collection_og_description_template = TextAreaField('Collection OG Description Template', validators=[Optional(), Length(max=500)])
+    collection_twitter_title_template = StringField('Collection Twitter Title Template', validators=[Optional(), Length(max=255)])
+    collection_twitter_description_template = TextAreaField('Collection Twitter Description Template', validators=[Optional(), Length(max=500)])
+    
+    submit = SubmitField('Save SEO Defaults')
