@@ -48,6 +48,14 @@
                         <i class="fas fa-trash"></i> Delete All
                     </button>
                 </form>
+                <!-- Add Bulk Delete Form -->
+                <form id="bulk-delete-collections-form" action="{{ url_for('bulk_delete_collections') }}" method="post" class="mb-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger" id="bulk-delete-collections-button" disabled>
+                        <i class="fas fa-trash-alt"></i> Delete Selected
+                        <span class="selected-delete-count"></span>
+                    </button>
+                </form>
             </div>
         </div>
         
@@ -58,7 +66,7 @@
                 <div class="card h-100 collection-card">
                     <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                         <div class="form-check">
-                            <input class="form-check-input collection-checkbox" type="checkbox" value="{{ collection.id }}" id="collection-{{ collection.id }}" {% if collection.shopify_id %}disabled{% endif %}>
+                            <input class="form-check-input collection-checkbox" type="checkbox" name="collection_ids" value="{{ collection.id }}" id="collection-{{ collection.id }}" {% if collection.shopify_id %}disabled title="Cannot delete exported collections"{% endif %}>
                             <label class="form-check-label text-white" for="collection-{{ collection.id }}">
                                 {{ collection.name }}
                             </label>
@@ -223,70 +231,132 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const exportForm = document.getElementById('export-selected-form');
-        const exportButton = document.getElementById('export-selected-btn');
-        const checkboxes = document.querySelectorAll('.collection-checkbox');
-        const selectedCountSpan = document.querySelector('.selected-count');
-        
-        // Function to update export button state
-        function updateExportButton() {
-            const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+document.addEventListener('DOMContentLoaded', function() {
+    const exportForm = document.getElementById('export-selected-form');
+    const exportButton = document.getElementById('export-selected-btn');
+    const selectedCountSpan = exportButton ? exportButton.querySelector('.selected-count') : null; // Adjusted selector
+
+    const bulkDeleteForm = document.getElementById('bulk-delete-collections-form');
+    const bulkDeleteButton = document.getElementById('bulk-delete-collections-button');
+    const selectedDeleteCountSpan = bulkDeleteButton ? bulkDeleteButton.querySelector('.selected-delete-count') : null; // Added selector
+
+    // Select only checkboxes that are not disabled (i.e., not exported)
+    const checkboxes = document.querySelectorAll('.collection-checkbox:not(:disabled)');
+
+    // Function to update button states based on checkbox selection
+    function updateButtonStates() {
+        const selectedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
+        const selectedCount = selectedCheckboxes.length;
+
+        // Update Export button
+        if (exportButton) {
             exportButton.disabled = selectedCount === 0;
-            selectedCountSpan.textContent = selectedCount > 0 ? ` (${selectedCount})` : '';
         }
-        
-        // Handle checkbox changes
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                updateExportButton();
-            });
-        });
-        
-        // Handle form submission
+        if (selectedCountSpan) {
+             selectedCountSpan.textContent = selectedCount > 0 ? ` (${selectedCount})` : '';
+        }
+
+        // Update Bulk Delete button
+        if (bulkDeleteButton) {
+            bulkDeleteButton.disabled = selectedCount === 0;
+        }
+         if (selectedDeleteCountSpan) {
+             selectedDeleteCountSpan.textContent = selectedCount > 0 ? ` (${selectedCount})` : '';
+         }
+    }
+
+    // Handle checkbox changes
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateButtonStates);
+    });
+
+    // Handle Export Selected form submission
+    if (exportForm) {
         exportForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Get selected collection IDs
-            const selectedIds = Array.from(checkboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.value);
-            
-            // Remove any existing collection_ids inputs
-            exportForm.querySelectorAll('input[name="collection_ids"]').forEach(input => input.remove());
-            
-            // Add selected collection IDs to form
-            selectedIds.forEach(id => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'collection_ids';
-                input.value = id;
-                exportForm.appendChild(input);
-            });
-            
-            // Submit the form
-            exportForm.submit();
-        });
-        
-        // Add confirmation for delete all collections button
-        const deleteAllButtons = document.querySelectorAll('.delete-all-confirm');
-        deleteAllButtons.forEach(function(button) {
-            button.addEventListener('click', function(e) {
-                if (!confirm('Are you sure you want to delete ALL collections? This action cannot be undone.')) {
-                    e.preventDefault();
+            // Remove any existing hidden inputs first
+            exportForm.querySelectorAll('input[name="collection_ids"][type="hidden"]').forEach(input => input.remove());
+
+            // Add hidden inputs for currently selected collections
+            let collectionsSelected = false;
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'collection_ids';
+                    input.value = checkbox.value;
+                    exportForm.appendChild(input);
+                    collectionsSelected = true;
                 }
             });
+
+            if (!collectionsSelected) {
+                e.preventDefault(); // Prevent submission if nothing selected
+                alert('Please select at least one collection to export.');
+            }
+            // Confirmation could be added here if desired
         });
-        
-        // Add confirmation for individual delete buttons
-        const deleteButtons = document.querySelectorAll('.delete-confirm');
-        deleteButtons.forEach(function(button) {
-            button.addEventListener('click', function(e) {
-                if (!confirm('Are you sure you want to delete this collection?')) {
-                    e.preventDefault();
-                }
-            });
+    }
+
+    // Handle Bulk Delete form submission
+    if (bulkDeleteForm) {
+        bulkDeleteForm.addEventListener('submit', function(e) {
+            const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+
+            if (selectedCount === 0) {
+                e.preventDefault();
+                alert('Please select at least one collection to delete.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${selectedCount} selected collection(s)? This action cannot be undone.`)) {
+                e.preventDefault(); // Prevent form submission if user cancels
+            } else {
+                 // Add hidden inputs for currently selected collections just before submitting
+                 bulkDeleteForm.querySelectorAll('input[name="collection_ids"][type="hidden"]').forEach(input => input.remove());
+                 checkboxes.forEach(checkbox => {
+                     if (checkbox.checked) {
+                         const input = document.createElement('input');
+                         input.type = 'hidden';
+                         input.name = 'collection_ids';
+                         input.value = checkbox.value;
+                         bulkDeleteForm.appendChild(input);
+                     }
+                 });
+            }
+        });
+    }
+
+    // Add confirmation for delete all collections button
+    const deleteAllButtons = document.querySelectorAll('.delete-all-confirm');
+    deleteAllButtons.forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            if (!confirm('Are you sure you want to delete ALL collections in this store? This action cannot be undone.')) {
+                e.preventDefault();
+            }
         });
     });
+
+    // Add confirmation for individual delete buttons
+    const deleteButtons = document.querySelectorAll('.delete-confirm');
+    deleteButtons.forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            // Check if the collection is exported (checkbox disabled)
+            const card = button.closest('.collection-card');
+            const checkbox = card ? card.querySelector('.collection-checkbox') : null;
+            if (checkbox && checkbox.disabled) {
+                 e.preventDefault();
+                 alert('Cannot delete an exported collection. Please remove it from Shopify first.');
+                 return;
+            }
+
+            if (!confirm('Are you sure you want to delete this collection?')) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // Initial state check for buttons
+    updateButtonStates();
+});
 </script>
 {% endblock %}

@@ -45,14 +45,12 @@
                         <h5 class="mb-0">Product List</h5>
                     </div>
                     <div class="col-md-6 text-end">
-                        <form action="{{ url_for('auto_tag_products') }}" method="post" class="d-inline-block me-2">
+                        <!-- Removed the hidden product_ids inputs from auto_tag_form -->
+                        <form action="{{ url_for('auto_tag_products') }}" method="post" class="d-inline-block me-2" id="auto-tag-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {% for product in products %}
-                            <input type="hidden" name="product_ids" value="{{ product.id }}">
-                            {% endfor %}
                             {{ auto_tag_form.submit(class="btn btn-info") }}
                         </form>
-                        
+
                         <form action="{{ url_for('create_collections_from_tags') }}" method="post" class="d-inline-block">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="form-check form-check-inline me-2">
@@ -64,14 +62,16 @@
                     </div>
                 </div>
             </div>
-            <div class="card-body">
-                <div class="table-responsive">
+            <div class="card-body p-0"> <!-- Removed padding for form -->
+                <form action="{{ url_for('bulk_delete_products') }}" method="post" id="bulk-delete-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
                             <tr>
                                 <th width="40">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="select-all-products">
+                                        <input class="form-check-input" type="checkbox" id="select-all-products" title="Select all products on this page">
                                     </div>
                                 </th>
                                 <th>Title</th>
@@ -86,7 +86,7 @@
                             <tr>
                                 <td>
                                     <div class="form-check">
-                                        <input class="form-check-input product-checkbox-visible" type="checkbox" data-product-id="{{ product.id }}">
+                                        <input class="form-check-input product-checkbox" type="checkbox" name="product_ids" value="{{ product.id }}">
                                     </div>
                                 </td>
                                 <td>{{ product.title }}</td>
@@ -115,8 +115,14 @@
                             {% endfor %}
                         </tbody>
                     </table>
-                </div>
-            </div>
+                    </div> <!-- End table-responsive -->
+                    <div class="card-footer bg-light">
+                        <button type="submit" class="btn btn-danger" id="bulk-delete-button" disabled>
+                            <i class="fas fa-trash"></i> Delete Selected
+                        </button>
+                    </div>
+                </form>
+            </div> <!-- End card-body -->
             
             {% if pagination.pages > 1 %}
             <div class="card-footer">
@@ -175,52 +181,83 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Get all product checkboxes
-        const productCheckboxes = document.querySelectorAll('.product-checkbox-visible');
-        
-        // Handle select all checkbox
-        const selectAllCheckbox = document.getElementById('select-all-products');
-        if (selectAllCheckbox) {
-            // Update "Select All" state based on individual checkboxes
-            function updateSelectAllState() {
-                const allChecked = Array.from(productCheckboxes).every(checkbox => checkbox.checked);
-                selectAllCheckbox.checked = allChecked;
-            }
-            
-            // Handle "Select All" checkbox change
-            selectAllCheckbox.addEventListener('change', function() {
-                const isChecked = this.checked;
-                productCheckboxes.forEach(checkbox => {
-                    checkbox.checked = isChecked;
-                });
-            });
-            
-            // Handle individual checkbox changes
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('select-all-products');
+    const productCheckboxes = document.querySelectorAll('.product-checkbox');
+    const bulkDeleteButton = document.getElementById('bulk-delete-button');
+    const bulkDeleteForm = document.getElementById('bulk-delete-form');
+    const autoTagForm = document.getElementById('auto-tag-form'); // Get the auto-tag form
+
+    function updateButtonState() {
+        const anyChecked = Array.from(productCheckboxes).some(checkbox => checkbox.checked);
+        bulkDeleteButton.disabled = !anyChecked;
+    }
+
+    function updateSelectAllState() {
+        const allChecked = productCheckboxes.length > 0 && Array.from(productCheckboxes).every(checkbox => checkbox.checked);
+        selectAllCheckbox.checked = allChecked;
+        updateButtonState(); // Update button state when individual checkboxes change
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
             productCheckboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', updateSelectAllState);
+                checkbox.checked = isChecked;
             });
-        }
-        
-        // Handle form submission to include selected products
-        const forms = document.querySelectorAll('form');
-        forms.forEach(form => {
-            form.addEventListener('submit', function(e) {
-                // Remove any existing product_ids inputs
-                form.querySelectorAll('input[name="product_ids"]').forEach(input => input.remove());
-                
-                // Add selected product IDs to the form
-                productCheckboxes.forEach(checkbox => {
-                    if (checkbox.checked) {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'product_ids';
-                        input.value = checkbox.dataset.productId;
-                        form.appendChild(input);
-                    }
-                });
-            });
+            updateButtonState(); // Update button state when select-all changes
         });
+    }
+
+    productCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateSelectAllState);
     });
+
+    if (bulkDeleteForm) {
+        bulkDeleteForm.addEventListener('submit', function(e) {
+            const selectedCount = Array.from(productCheckboxes).filter(checkbox => checkbox.checked).length;
+            if (selectedCount === 0) {
+                e.preventDefault();
+                alert('Please select at least one product to delete.');
+                return;
+            }
+            if (!confirm(`Are you sure you want to delete ${selectedCount} selected product(s)? This action cannot be undone.`)) {
+                e.preventDefault(); // Prevent form submission if user cancels
+            }
+            // No need to manually add hidden inputs, as the checkboxes have name="product_ids"
+        });
+    }
+
+    // --- Specific handling for Auto-Tag form ---
+    if (autoTagForm) {
+        autoTagForm.addEventListener('submit', function(e) {
+            // Remove any previously added hidden inputs to avoid duplicates
+            autoTagForm.querySelectorAll('input[name="product_ids"][type="hidden"]').forEach(input => input.remove());
+
+            // Add hidden inputs for currently selected products
+            let productsSelected = false;
+            productCheckboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'product_ids';
+                    input.value = checkbox.value; // Use checkbox value directly
+                    autoTagForm.appendChild(input);
+                    productsSelected = true;
+                }
+            });
+
+            if (!productsSelected) {
+                e.preventDefault(); // Prevent submission if no products are selected
+                alert('Please select at least one product to auto-tag.');
+            }
+            // Confirmation for auto-tagging might be good too, but skipping for now
+        });
+    }
+
+
+    // Initial state check
+    updateSelectAllState();
+});
 </script>
 {% endblock %}

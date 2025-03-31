@@ -263,6 +263,34 @@ def create_app():
         db.session.commit()
         flash('Product deleted successfully', 'success')
         return redirect(url_for('products'))
+
+    @app.route('/products/bulk-delete', methods=['POST'])
+    def bulk_delete_products():
+        """Bulk delete selected products."""
+        product_ids = request.form.getlist('product_ids')
+
+        if not product_ids:
+            flash('No products selected for deletion.', 'warning')
+            return redirect(url_for('products'))
+
+        # Ensure we only delete products belonging to the current store
+        products_query = Product.query.filter(Product.id.in_(product_ids))
+        if g.current_store:
+            products_query = products_query.filter_by(store_id=g.current_store.id)
+
+        products_to_delete = products_query.all()
+        deleted_count = len(products_to_delete)
+
+        if not products_to_delete:
+            flash('No valid products found for deletion in the current store.', 'warning')
+            return redirect(url_for('products'))
+
+        for product in products_to_delete:
+            db.session.delete(product)
+
+        db.session.commit()
+        flash(f'{deleted_count} products deleted successfully.', 'success')
+        return redirect(url_for('products'))
     
     @app.route('/products/<int:id>/tags', methods=['GET', 'POST'])
     def manage_product_tags(id):
@@ -542,6 +570,34 @@ def create_app():
         db.session.delete(collection)
         db.session.commit()
         flash('Collection deleted successfully', 'success')
+        return redirect(url_for('collections'))
+
+    @app.route('/collections/bulk-delete', methods=['POST'])
+    def bulk_delete_collections():
+        """Bulk delete selected collections."""
+        collection_ids = request.form.getlist('collection_ids')
+
+        if not collection_ids:
+            flash('No collections selected for deletion.', 'warning')
+            return redirect(url_for('collections'))
+
+        # Ensure we only delete collections belonging to the current store
+        collections_query = Collection.query.filter(Collection.id.in_(collection_ids))
+        if g.current_store:
+            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+
+        collections_to_delete = collections_query.all()
+        deleted_count = len(collections_to_delete)
+
+        if not collections_to_delete:
+            flash('No valid collections found for deletion in the current store.', 'warning')
+            return redirect(url_for('collections'))
+
+        for collection in collections_to_delete:
+            db.session.delete(collection)
+
+        db.session.commit()
+        flash(f'{deleted_count} collections deleted successfully.', 'success')
         return redirect(url_for('collections'))
     
     @app.route('/collections/create-from-tags', methods=['POST'])
