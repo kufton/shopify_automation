@@ -64,7 +64,8 @@
                         {% endif %}
                     </div>
                     <div class="col-md-4">
-                        <div class="card bg-light">
+                        <!-- Collection Info Card -->
+                        <div class="card bg-light mb-3">
                             <div class="card-body">
                                 <h5 class="card-title">Collection Info</h5>
                                 <ul class="list-unstyled">
@@ -78,6 +79,26 @@
                                     <li><strong>Shopify Status:</strong> <span class="badge bg-warning">Not Synced</span></li>
                                     {% endif %}
                                 </ul>
+                            </div>
+                        </div>
+                        <!-- Featured Image Card -->
+                        <div class="card bg-light">
+                             <div class="card-header">
+                                <h5 class="card-title mb-0">Featured Image</h5>
+                             </div>
+                            <div class="card-body text-center">
+                                {% if collection.image_url %}
+                                    <img src="{{ collection.image_url }}" alt="Collection Image" class="img-fluid rounded mb-2" style="max-height: 200px;">
+                                    <form action="{{ url_for('set_collection_image', collection_id=collection.id, product_id=0) }}" method="post" class="d-inline"> {# Use product_id=0 or similar to indicate clearing #}
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        {# We might need a dedicated route/logic to clear the image #}
+                                        {# <button type="submit" class="btn btn-sm btn-outline-danger">Clear Image</button> #}
+                                        <p><small>Set from products below.</small></p>
+                                    </form>
+                                {% else %}
+                                    <i class="fas fa-image fa-4x text-muted mb-2"></i>
+                                    <p class="text-muted">No featured image set. Choose one from the products below.</p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -126,6 +147,14 @@
                                     <a href="{{ url_for('manage_product_tags', id=product.id) }}" class="btn btn-sm btn-outline-info">
                                         <i class="fas fa-tags"></i> Tags
                                     </a>
+                                    {% if product.image_url %}
+                                    <form action="{{ url_for('set_collection_image', collection_id=collection.id, product_id=product.id) }}" method="post" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-success" title="Use this product's image as the collection image">
+                                            <i class="fas fa-image"></i> Use Image
+                                        </button>
+                                    </form>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>

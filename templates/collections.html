@@ -75,6 +75,18 @@
                         <span class="badge bg-info">Exported</span>
                         {% endif %}
                     </div>
+                    <!-- Add Collection Image -->
+                    {% if collection.image_url %}
+                    <a href="{{ url_for('view_collection', id=collection.id) }}">
+                        <img src="{{ collection.image_url }}" class="card-img-top collection-list-image" alt="{{ collection.name }} image">
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('view_collection', id=collection.id) }}" class="collection-image-placeholder">
+                        <div class="card-img-top collection-list-image bg-light d-flex align-items-center justify-content-center">
+                            <i class="fas fa-image fa-3x text-muted"></i>
+                        </div>
+                    </a>
+                    {% endif %}
                     <div class="card-body">
                         <span class="badge bg-primary rounded-pill product-count-badge">
                             {{ collection.products|length }} products

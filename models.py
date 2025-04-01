@@ -146,6 +146,7 @@ class Collection(db.Model, SEOFields): # Added SEOFields mixin
     name = db.Column(db.String(255), nullable=False)
     slug = db.Column(db.String(255))  # Removed unique constraint as slugs can be duplicated across stores
     description = db.Column(db.Text)
+    image_url = db.Column(db.String(500), nullable=True) # Added field for featured image
     # meta_description is now part of SEOFields
     # meta_description = db.Column(db.Text) 
     shopify_id = db.Column(db.String(100))  # Shopify collection ID for syncing
@@ -175,6 +176,7 @@ class Collection(db.Model, SEOFields): # Added SEOFields mixin
             'slug': self.slug,
             'description': self.description,
             # 'meta_description': self.meta_description, # Removed, now part of seo_dict
+            'image_url': self.image_url, # Added image_url
             'tag': self.tag.name if self.tag else None,
             'product_count': len(self.products),
             'store_id': self.store_id,

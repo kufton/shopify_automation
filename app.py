@@ -2,16 +2,17 @@ import os
 import anthropic
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, g, session
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate # Add Migrate import
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import func
-from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule # Added CleanupRule
+from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule, SEODefaults # Added CleanupRule, SEODefaults
 from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm, CleanupRuleForm # Added CleanupRuleForm
 from claude_integration import ClaudeTaggingService
 import re # Added re import
 from shopify_integration import ShopifyIntegration
 from store_management import get_current_store, set_current_store, filter_query_by_store, get_all_stores
 from config import Config
-from auto_migrate import run_migrations
+# from auto_migrate import run_migrations # Remove old migration import
 import json
 import re # Make sure re is imported if not already done by previous step
 
@@ -53,6 +54,7 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     csrf = CSRFProtect(app)
+    migrate = Migrate(app, db) # Initialize Flask-Migrate
     
     # Ensure the instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
@@ -80,8 +82,8 @@ def create_app():
     with app.app_context():
         db.create_all()
         
-        # Run database migrations to ensure multi-store support
-        run_migrations(app)
+        # Flask-Migrate handles migrations now, remove old call
+        # run_migrations(app)
         
         # Initialize default environment variables if they don't exist
         for key, value in Config.DEFAULT_ENV_VARS.items():
@@ -830,6 +832,35 @@ def create_app():
         else:
             # For regular collections, use the pre-populated products
             return render_template('view_collection.html', collection=collection)
+    
+    @app.route('/collections/<int:collection_id>/set-image/<int:product_id>', methods=['POST'])
+    def set_collection_image(collection_id, product_id):
+        """Set the collection's featured image from a product."""
+        collection = Collection.query.get_or_404(collection_id)
+        product = Product.query.get_or_404(product_id)
+
+        # Security check: Ensure both belong to the current store
+        if g.current_store:
+            if collection.store_id != g.current_store.id or product.store_id != g.current_store.id:
+                flash('Invalid operation: Collection or product not found in the current store.', 'danger')
+                return redirect(url_for('view_collection', id=collection_id))
+        else:
+            # Handle case where no store is selected (should ideally not happen for store-specific items)
+            flash('No store selected. Please select a store first.', 'warning')
+            return redirect(url_for('stores'))
+
+
+        # Optional check: Ensure product is actually in the collection (might be complex for smart collections)
+        # For simplicity, we'll allow setting image from any product in the same store for now.
+
+        if not product.image_url:
+            flash(f'Product "{product.title}" does not have an image URL.', 'warning')
+            return redirect(url_for('view_collection', id=collection_id))
+
+        collection.image_url = product.image_url
+        db.session.commit()
+        flash(f'Collection "{collection.name}" image updated successfully.', 'success')
+        return redirect(url_for('view_collection', id=collection_id))
     
     @app.route('/collections/delete-all', methods=['POST'])
     def delete_all_collections():
@@ -1646,6 +1677,66 @@ def create_app():
 
     # --- End Bulk Apply Cleanup Route ---
     
+    # --- CLI Commands ---
+    @app.cli.command("seed-seo-defaults")
+    def seed_seo_defaults():
+        """Seeds the SEODefaults table with default templates for each store."""
+        print("Seeding SEO defaults...")
+        default_templates = {
+            'product': {
+                'title_template': '{title} | {store_name}',
+                'description_template': 'Shop {title} at {store_name}. {description_excerpt}',
+                'og_title_template': '{title} - Available at {store_name}',
+                'og_description_template': 'Shop {title} at {store_name}. {description_excerpt}', # Added default
+                'twitter_title_template': 'Shop {title} at {store_name}',
+                'twitter_description_template': 'Shop {title} at {store_name}. {description_excerpt}' # Added default
+            },
+            'collection': {
+                'title_template': '{name} Collection | {store_name}',
+                'description_template': 'Explore our {name} collection. {product_count} products including {example_products}',
+                'og_title_template': 'Shop {name} Collection at {store_name}',
+                'og_description_template': 'Explore our {name} collection. {product_count} products including {example_products}', # Added default
+                'twitter_title_template': '{name} Collection at {store_name}',
+                'twitter_description_template': 'Explore our {name} collection. {product_count} products including {example_products}' # Added default
+            }
+        }
+
+        stores = Store.query.all()
+        if not stores:
+            print("No stores found. Skipping seeding.")
+            return
+
+        for store in stores:
+            print(f"Processing store: {store.name} (ID: {store.id})")
+            for entity_type, templates in default_templates.items():
+                existing_default = SEODefaults.query.filter_by(
+                    store_id=store.id,
+                    entity_type=entity_type
+                ).first()
+
+                if not existing_default:
+                    print(f"  Creating default for entity type: {entity_type}")
+                    new_default = SEODefaults(
+                        store_id=store.id,
+                        entity_type=entity_type,
+                        title_template=templates.get('title_template'),
+                        description_template=templates.get('description_template'),
+                        og_title_template=templates.get('og_title_template'),
+                        og_description_template=templates.get('og_description_template'),
+                        twitter_title_template=templates.get('twitter_title_template'),
+                        twitter_description_template=templates.get('twitter_description_template')
+                    )
+                    db.session.add(new_default)
+                else:
+                    print(f"  Default already exists for entity type: {entity_type}")
+
+        try:
+            db.session.commit()
+            print("SEO defaults seeding completed successfully.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error seeding SEO defaults: {e}")
+
     return app
 
 if __name__ == '__main__':

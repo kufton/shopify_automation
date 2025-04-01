@@ -75,7 +75,10 @@
                                     <p class="text-muted small">Configure how this product appears in search results and on social media platforms.</p>
                                     
                                     <div class="mb-3">
-                                        <label for="meta_title" class="form-label">{{ form.meta_title.label }}</label>
+                                        <label for="meta_title" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.meta_title.label }}</span>
+                                            <small id="meta_title_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else ""), id="meta_title", placeholder="Enter meta title (max 60 chars)") }}
                                         {% if form.meta_title.errors %}
                                             <div class="invalid-feedback">{{ form.meta_title.errors|join(', ') }}</div>
@@ -83,7 +86,10 @@
                                     </div>
                                     
                                     <div class="mb-3">
-                                        <label for="meta_description" class="form-label">{{ form.meta_description.label }}</label>
+                                        <label for="meta_description" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.meta_description.label }}</span>
+                                            <small id="meta_description_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.meta_description(class="form-control" + (" is-invalid" if form.meta_description.errors else ""), id="meta_description", rows="3", placeholder="Enter meta description (max 160 chars)") }}
                                         {% if form.meta_description.errors %}
                                             <div class="invalid-feedback">{{ form.meta_description.errors|join(', ') }}</div>
@@ -94,7 +100,10 @@
                                     <h5>Open Graph (Facebook, LinkedIn, etc.)</h5>
                                     
                                     <div class="mb-3">
-                                        <label for="og_title" class="form-label">{{ form.og_title.label }}</label>
+                                        <label for="og_title" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.og_title.label }}</span>
+                                            <small id="og_title_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.og_title(class="form-control" + (" is-invalid" if form.og_title.errors else ""), id="og_title", placeholder="Enter Open Graph title (max 95 chars)") }}
                                         {% if form.og_title.errors %}
                                             <div class="invalid-feedback">{{ form.og_title.errors|join(', ') }}</div>
@@ -102,7 +111,10 @@
                                     </div>
                                     
                                     <div class="mb-3">
-                                        <label for="og_description" class="form-label">{{ form.og_description.label }}</label>
+                                        <label for="og_description" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.og_description.label }}</span>
+                                            <small id="og_description_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.og_description(class="form-control" + (" is-invalid" if form.og_description.errors else ""), id="og_description", rows="3", placeholder="Enter Open Graph description (max 200 chars)") }}
                                         {% if form.og_description.errors %}
                                             <div class="invalid-feedback">{{ form.og_description.errors|join(', ') }}</div>
@@ -129,7 +141,10 @@
                                     </div>
                                     
                                     <div class="mb-3">
-                                        <label for="twitter_title" class="form-label">{{ form.twitter_title.label }}</label>
+                                        <label for="twitter_title" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.twitter_title.label }}</span>
+                                            <small id="twitter_title_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.twitter_title(class="form-control" + (" is-invalid" if form.twitter_title.errors else ""), id="twitter_title", placeholder="Enter Twitter title (max 70 chars)") }}
                                         {% if form.twitter_title.errors %}
                                             <div class="invalid-feedback">{{ form.twitter_title.errors|join(', ') }}</div>
@@ -137,7 +152,10 @@
                                     </div>
                                     
                                     <div class="mb-3">
-                                        <label for="twitter_description" class="form-label">{{ form.twitter_description.label }}</label>
+                                        <label for="twitter_description" class="form-label d-flex justify-content-between">
+                                            <span>{{ form.twitter_description.label }}</span>
+                                            <small id="twitter_description_count" class="text-muted"></small>
+                                        </label>
                                         {{ form.twitter_description(class="form-control" + (" is-invalid" if form.twitter_description.errors else ""), id="twitter_description", rows="3", placeholder="Enter Twitter description (max 200 chars)") }}
                                         {% if form.twitter_description.errors %}
                                             <div class="invalid-feedback">{{ form.twitter_description.errors|join(', ') }}</div>
@@ -199,4 +217,49 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function setupCharacterCounter(inputId, displayId, maxLength) {
+            const inputElement = document.getElementById(inputId);
+            const displayElement = document.getElementById(displayId);
+
+            if (!inputElement || !displayElement) {
+                console.warn(`Counter elements not found for ${inputId}`);
+                return;
+            }
+
+            function updateCounter() {
+                const currentLength = inputElement.value.length;
+                displayElement.textContent = `${currentLength} / ${maxLength}`;
+                if (currentLength > maxLength) {
+                    displayElement.classList.add('text-danger');
+                    inputElement.classList.add('is-invalid');
+                } else {
+                    displayElement.classList.remove('text-danger');
+                    // Only remove is-invalid if there are no other WTForms errors
+                    if (!inputElement.classList.contains('is-invalid') || inputElement.value.length <= maxLength) {
+                         // Check if WTForms added is-invalid initially
+                         {% if not form[inputId].errors %}
+                         inputElement.classList.remove('is-invalid');
+                         {% endif %}
+                    }
+                }
+            }
+
+            inputElement.addEventListener('input', updateCounter);
+            updateCounter(); // Initial count on page load
+        }
+
+        // Setup counters for relevant fields
+        setupCharacterCounter('meta_title', 'meta_title_count', 60);
+        setupCharacterCounter('meta_description', 'meta_description_count', 160);
+        setupCharacterCounter('og_title', 'og_title_count', 95);
+        setupCharacterCounter('og_description', 'og_description_count', 200);
+        setupCharacterCounter('twitter_title', 'twitter_title_count', 70);
+        setupCharacterCounter('twitter_description', 'twitter_description_count', 200);
+    });
+</script>
 {% endblock %}
