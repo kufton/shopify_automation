@@ -92,7 +92,7 @@
                             {{ collection.products|length }} products
                         </span>
                         
-                        <p class="card-text mt-3">{{ collection.description|truncate(100) if collection.description else 'No description' }}</p>
+                        <p class="card-text mt-3">{{ collection.description|safe|truncate(100) if collection.description else 'No description' }}</p>
                         
                         {% if collection.tag %}
                         <div class="mt-3">

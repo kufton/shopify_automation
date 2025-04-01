@@ -31,7 +31,7 @@
                 <div class="row">
                     <div class="col-md-8">
                         <h5>Description</h5>
-                        <p>{{ collection.description or 'No description provided.' }}</p>
+                        <p>{{ collection.description|safe or 'No description provided.' }}</p>
                         
                         {% if collection.slug %}
                         <h5>SEO Slug</h5>
@@ -129,7 +129,7 @@
                             {% endif %}
                             <div class="card-body">
                                 <h5 class="card-title">{{ product.title }}</h5>
-                                <p class="card-text">{{ product.description|truncate(100) if product.description else 'No description' }}</p>
+                                <p class="card-text">{{ product.description|safe|truncate(100) if product.description else 'No description' }}</p>
                                 {% if product.price %}
                                 <p class="card-text"><strong>Price:</strong> ${{ "%.2f"|format(product.price) }}</p>
                                 {% endif %}

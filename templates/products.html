@@ -90,7 +90,7 @@
                                     </div>
                                 </td>
                                 <td>{{ product.title }}</td>
-                                <td>{{ product.description|truncate(50) if product.description else '' }}</td>
+                                <td>{{ product.description|safe|truncate(50) if product.description else '' }}</td>
                                 <td>{{ "%.2f"|format(product.price) if product.price else '-' }}</td>
                                 <td>
                                     {% for tag in product.tags %}

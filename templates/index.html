@@ -91,7 +91,7 @@
                                     <h5 class="mb-1">{{ product.title }}</h5>
                                     <small>{{ product.created_at.strftime('%Y-%m-%d') }}</small>
                                 </div>
-                                <p class="mb-1">{{ product.description|truncate(100) }}</p>
+                                <p class="mb-1">{{ product.description|safe|truncate(100) }}</p>
                                 <div>
                                     {% for tag in product.tags %}
                                     <span class="badge bg-secondary tag-badge">{{ tag.name }}</span>
@@ -128,7 +128,7 @@
                                     <h5 class="mb-1">{{ collection.name }}</h5>
                                     <span class="badge bg-primary rounded-pill">{{ collection.products|length }} products</span>
                                 </div>
-                                <p class="mb-1">{{ collection.description|truncate(100) }}</p>
+                                <p class="mb-1">{{ collection.description|safe|truncate(100) }}</p>
                                 {% if collection.tag %}
                                 <small>Based on tag: <span class="badge bg-info">{{ collection.tag.name }}</span></small>
                                 {% endif %}

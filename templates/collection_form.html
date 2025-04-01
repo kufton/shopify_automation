@@ -331,13 +331,9 @@
                     inputElement.classList.add('is-invalid');
                 } else {
                     displayElement.classList.remove('text-danger');
-                    // Only remove is-invalid if there are no other WTForms errors
-                    if (!inputElement.classList.contains('is-invalid') || inputElement.value.length <= maxLength) {
-                         // Check if WTForms added is-invalid initially
-                         {% if form[inputId] is defined and not form[inputId].errors %}
-                         inputElement.classList.remove('is-invalid');
-                         {% endif %}
-                    }
+                    // Remove is-invalid class added by this script if length is okay
+                    // Server-side 'is-invalid' (from WTForms) will remain if present initially
+                    inputElement.classList.remove('is-invalid');
                 }
             }
 
