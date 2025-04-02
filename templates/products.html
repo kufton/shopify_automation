@@ -90,7 +90,8 @@
                                     </div>
                                 </td>
                                 <td>{{ product.title }}</td>
-                                <td>{{ product.description|safe|truncate(50) if product.description else '' }}</td>
+                                {# Strip tags before truncating to prevent broken HTML affecting layout #}
+                                <td>{{ product.description|striptags|truncate(50) if product.description else '' }}</td>
                                 <td>{{ "%.2f"|format(product.price) if product.price else '-' }}</td>
                                 <td>
                                     {# Add a wrapper div for better control if needed, but let's try whitespace first #}

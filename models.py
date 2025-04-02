@@ -130,6 +130,7 @@ class Tag(db.Model):
     
     # Store relationship
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'))
+    is_app_managed = db.Column(db.Boolean, default=True, nullable=False, server_default='1') # Flag to identify tags created by this app
     
     def __repr__(self):
         return f'<Tag {self.name}>'

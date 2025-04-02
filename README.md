@@ -1,4 +1,18 @@
-# Product Manager with Claude 3.7 and Shopify Integration
+Kaleb's updates to apply it for his agency EKOH Marketing, and other in house uses.
+
+
+## Todo's
+~~1. add other llm's~~
+2. fix tagging display issue and trackign what tags we've added
+3. symantic keyword maps from the concept of the site
+4. blog generation and drafting from most popular tags
+5. long tail seo optimization
+6. Backlink research???
+
+
+
+Credit to  Hamish and the team from who this was forked.
+## Product Manager with Claude 3.7 and Shopify Integration
 
 A Flask-based product management application with automatic tagging using Claude 3.7 and Shopify integration. Supports multiple stores with isolated data.
 

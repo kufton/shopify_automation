@@ -1,5 +1,5 @@
 import os
-import anthropic
+# import anthropic # No longer directly needed here
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, g, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate # Add Migrate import
@@ -251,7 +251,8 @@ def create_app():
                     
                     tag = tag_query.first()
                     if not tag:
-                        tag = Tag(name=tag_name)
+                        # Set is_app_managed=True when creating the tag
+                        tag = Tag(name=tag_name, is_app_managed=True)
                         if g.current_store:
                             tag.store_id = g.current_store.id
                         db.session.add(tag)
@@ -328,7 +329,8 @@ def create_app():
             
             tag = tag_query.first()
             if not tag:
-                tag = Tag(name=tag_name)
+                 # Set is_app_managed=True when creating the tag
+                tag = Tag(name=tag_name, is_app_managed=True)
                 if g.current_store:
                     tag.store_id = g.current_store.id
                 db.session.add(tag)
@@ -429,10 +431,12 @@ def create_app():
                         if existing_tag:
                             # Tag exists but for a different store, create a new one for this store
                             print(f"Tag {tag_name} exists for another store, creating for current store")
-                            tag = Tag(name=f"{tag_name}", store_id=g.current_store.id if g.current_store else None)
+                            # Set is_app_managed=True when creating the tag
+                            tag = Tag(name=f"{tag_name}", store_id=g.current_store.id if g.current_store else None, is_app_managed=True)
                         else:
                             print(f"Creating new tag: {tag_name}")
-                            tag = Tag(name=tag_name)
+                             # Set is_app_managed=True when creating the tag
+                            tag = Tag(name=tag_name, is_app_managed=True)
                             if g.current_store:
                                 tag.store_id = g.current_store.id
                         
@@ -1103,18 +1107,22 @@ def create_app():
             flash('No products found in the current store.', 'info')
             return redirect(url_for('tags'))
     
-        # Iterate and clear tags for each product
-        removed_count = 0
+        # Iterate through products and remove associations ONLY for app-managed tags
+        removed_associations = 0
+        processed_products = 0
         for product in products_in_store:
-            if product.tags:
-                product.tags = []
-                removed_count += 1
+            tags_to_remove = [tag for tag in product.tags if tag.is_app_managed]
+            if tags_to_remove:
+                processed_products += 1
+                for tag in tags_to_remove:
+                    product.tags.remove(tag) # Remove the specific association
+                    removed_associations += 1
     
-        if removed_count > 0:
+        if removed_associations > 0:
             db.session.commit()
-            flash(f'Removed all tags from {removed_count} product(s) in store "{g.current_store.name}".', 'success')
+            flash(f'Removed {removed_associations} app-managed tag associations from {processed_products} product(s) in store "{g.current_store.name}".', 'success')
         else:
-            flash(f'No products with tags found in store "{g.current_store.name}".', 'info')
+            flash(f'No app-managed tags found on products in store "{g.current_store.name}".', 'info')
     
         return redirect(url_for('tags'))
     
