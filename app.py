@@ -7,7 +7,8 @@ from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import func
 from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule, SEODefaults # Added CleanupRule, SEODefaults
 from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm, CleanupRuleForm # Added CleanupRuleForm
-from claude_integration import ClaudeTaggingService
+# from claude_integration import ClaudeTaggingService # Replaced by ai_services
+from ai_services import get_ai_service # Import the factory function
 import re # Added re import
 from shopify_integration import ShopifyIntegration
 from store_management import get_current_store, set_current_store, filter_query_by_store, get_all_stores
@@ -60,7 +61,8 @@ def create_app():
     os.makedirs(app.instance_path, exist_ok=True)
     
     # Initialize services
-    claude_service = ClaudeTaggingService()
+    # AI service will be initialized after loading DB env vars
+    ai_service = None # Placeholder
     shopify_service = ShopifyIntegration()
     
     # Make Config, current_store, and get_all_stores available to all templates
@@ -125,34 +127,47 @@ def create_app():
         
         db.session.commit()
         
-        # Load environment variables from database
+        # Load environment variables from database and update Config/Services
         env_vars = EnvVar.query.all()
+        ai_config_changed = False
         for env_var in env_vars:
-            # Update the runtime environment
+            # Update the runtime environment (important for libraries reading directly)
             os.environ[env_var.key] = env_var.value
-            
-            # Update Config object
-            if env_var.key == 'ANTHROPIC_API_KEY':
-                Config.ANTHROPIC_API_KEY = env_var.value
-                # Update Claude service
-                claude_service.api_key = env_var.value
-                if env_var.value:  # Only create client if API key is not empty
-                    claude_service.client = anthropic.Anthropic(api_key=env_var.value)
+
+            # Update Config object attributes directly
+            if hasattr(Config, env_var.key):
+                setattr(Config, env_var.key, env_var.value)
+                # Track if AI-related config changed
+                if env_var.key.startswith('AI_') or env_var.key in ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROK_API_KEY', 'LLAMA_API_BASE_URL', 'LLAMA_API_KEY']:
+                    ai_config_changed = True
             elif env_var.key == 'SHOPIFY_ACCESS_TOKEN':
-                Config.SHOPIFY_ACCESS_TOKEN = env_var.value
-                # Update Shopify service
-                shopify_service.access_token = env_var.value
-                shopify_service.headers['X-Shopify-Access-Token'] = env_var.value
+                 Config.SHOPIFY_ACCESS_TOKEN = env_var.value
+                 # Update Shopify service
+                 shopify_service.access_token = env_var.value
+                 shopify_service.headers['X-Shopify-Access-Token'] = env_var.value
             elif env_var.key == 'SHOPIFY_STORE_URL':
-                Config.SHOPIFY_STORE_URL = env_var.value
-                # Update Shopify service
-                shopify_service.store_url = env_var.value
-                if env_var.value and env_var.value.endswith('/'):
-                    shopify_service.store_url = env_var.value[:-1]
-            elif env_var.key == 'SECRET_KEY':
-                Config.SECRET_KEY = env_var.value
-            elif env_var.key == 'DATABASE_URI':
-                Config.SQLALCHEMY_DATABASE_URI = env_var.value
+                 Config.SHOPIFY_STORE_URL = env_var.value
+                 # Update Shopify service
+                 shopify_service.store_url = env_var.value
+                 if env_var.value and env_var.value.endswith('/'):
+                     shopify_service.store_url = env_var.value[:-1]
+            # Handle specific config updates if needed (e.g., parsing JSON for prompts again)
+            if env_var.key == 'AI_CUSTOM_PROMPT_JSON':
+                try:
+                    Config.AI_CUSTOM_PROMPTS = json.loads(env_var.value)
+                    if not isinstance(Config.AI_CUSTOM_PROMPTS, dict):
+                        print("Warning: DB AI_CUSTOM_PROMPT_JSON did not parse to a dictionary.")
+                        Config.AI_CUSTOM_PROMPTS = {}
+                except json.JSONDecodeError:
+                    print("Warning: Could not parse DB AI_CUSTOM_PROMPT_JSON.")
+                    Config.AI_CUSTOM_PROMPTS = {}
+                ai_config_changed = True # Ensure re-initialization
+
+        # Now that Config is updated with DB values, initialize the AI service
+        print(f"Initializing AI Service with provider: {Config.AI_PROVIDER}")
+        ai_service = get_ai_service()
+        # Make ai_service accessible in request contexts if needed, e.g., via app context or g
+        # For simplicity now, routes will use the 'ai_service' variable from the create_app scope.
     
     @app.route('/')
     def index():
@@ -221,9 +236,13 @@ def create_app():
             db.session.add(product)
             db.session.commit()
             
-            # Auto-tag the product if Claude API key is available
-            if Config.ANTHROPIC_API_KEY:
-                tags = claude_service.generate_tags(product)
+            # Auto-tag the product if AI service is configured with an API key
+            if ai_service and ai_service.api_key:
+                try:
+                    tags = ai_service.generate_tags(product) # Use synchronous wrapper
+                except Exception as e:
+                    print(f"Error during sync tag generation: {e}")
+                    tags = ["error generating tags"]
                 for tag_name in tags:
                     # Check if tag exists for this store, create if not
                     tag_query = Tag.query.filter_by(name=tag_name)
@@ -240,7 +259,7 @@ def create_app():
                 db.session.commit()
                 flash(f'Product added and auto-tagged with: {", ".join(tags)}', 'success')
             else:
-                flash('Product added. Claude API key not set, skipping auto-tagging.', 'warning')
+                flash(f'Product added. AI Provider ({Config.AI_PROVIDER}) not configured or API key missing, skipping auto-tagging.', 'warning')
             
             return redirect(url_for('products'))
         return render_template('product_form.html', form=form, title='Add Product')
@@ -348,8 +367,9 @@ def create_app():
             flash('No products selected for auto-tagging', 'warning')
             return redirect(url_for('products'))
         
-        if not Config.ANTHROPIC_API_KEY:
-            flash('Claude API key not set. Please set it in environment variables.', 'danger')
+        # Check if the configured AI service has an API key
+        if not (ai_service and ai_service.api_key):
+            flash(f'AI Provider ({Config.AI_PROVIDER}) API key not set. Please set it in environment variables.', 'danger')
             return redirect(url_for('env_vars'))
         
         # Get all products to tag (filtered by store)
@@ -366,7 +386,8 @@ def create_app():
         flash(f'Started auto-tagging {len(products)} products. This may take a while for large batches...', 'info')
         
         # Process products in batches asynchronously
-        results = await claude_service.batch_generate_tags(products, batch_size=50)
+        # Use the configured AI service
+        results = await ai_service.batch_generate_tags(products, batch_size=50)
         
         tagged_count = 0
         total_tags_added = 0
@@ -745,16 +766,29 @@ def create_app():
         db.session.commit()
         
         # Now, analyze products without tags to create new collections (filtered by store)
-        untagged_query = Product.query.filter(~Product.tags.any())
-        if g.current_store:
-            untagged_query = untagged_query.filter_by(store_id=g.current_store.id)
-        
-        untagged_products = untagged_query.all()
-        if untagged_products:
-            flash(f'Analyzing {len(untagged_products)} untagged products for collections. This may take a while...', 'info')
-            
-            # Process products in batches asynchronously
-            results = await claude_service.batch_analyze_products_for_collections(untagged_products, batch_size=50)
+        # Check if AI service is configured before attempting analysis
+        if ai_service and ai_service.api_key:
+            untagged_query = Product.query.filter(~Product.tags.any())
+            if g.current_store:
+                untagged_query = untagged_query.filter_by(store_id=g.current_store.id)
+
+            untagged_products = untagged_query.all()
+            if untagged_products:
+                flash(f'Analyzing {len(untagged_products)} untagged products for collections using {Config.AI_PROVIDER}. This may take a while...', 'info')
+
+                # Process products in batches asynchronously using the configured AI service
+                try:
+                    results = await ai_service.batch_analyze_products_for_collections(untagged_products, batch_size=50)
+                except Exception as e:
+                    print(f"Error during batch collection analysis: {e}")
+                    flash(f"Error analyzing untagged products with {Config.AI_PROVIDER}: {e}", "danger")
+                    results = [] # Ensure results is an empty list on error
+            else:
+                results = [] # No untagged products to analyze
+        else:
+            flash(f'AI Provider ({Config.AI_PROVIDER}) API key not set. Skipping analysis of untagged products.', 'warning')
+            untagged_products = [] # Ensure this is empty if skipped
+            results = [] # Ensure results is empty if skipped
             
             # Group products by category
             categories = {}

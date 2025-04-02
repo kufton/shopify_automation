@@ -9,3 +9,4 @@ requests==2.31.0
 aiohttp==3.9.1
 asyncio==3.4.3
 httpx==0.27.1
+google-generativeai>=0.4.0 # Add Gemini library (specify version or use >=)
