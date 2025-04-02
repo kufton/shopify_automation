@@ -94,10 +94,16 @@
                                 <td>{{ product.description|striptags|truncate(50) if product.description else '' }}</td>
                                 <td>{{ "%.2f"|format(product.price) if product.price else '-' }}</td>
                                 <td>
-                                    {# Add a wrapper div for better control if needed, but let's try whitespace first #}
-                                    {% for tag in product.tags %}
-                                        {# Ensure clean class definition and add space after span for wrapping #}
-                                        <span class="badge bg-secondary tag-badge">{{ tag.name }}</span> {% endfor %}
+                                    {# Limit displayed tags and add a link for more #}
+                                    {% set max_tags_display = 5 %}
+                                    {% for tag in product.tags[:max_tags_display] %}
+                                        <span class="badge bg-secondary tag-badge">{{ tag.name }}</span>
+                                    {% endfor %}
+                                    {% if product.tags|length > max_tags_display %}
+                                        <a href="{{ url_for('manage_product_tags', id=product.id) }}" class="badge bg-light text-dark text-decoration-none" title="View all {{ product.tags|length }} tags">
+                                            ... (+{{ product.tags|length - max_tags_display }} more)
+                                        </a>
+                                    {% endif %}
                                 </td>
                                 <td class="action-buttons">
                                     <a href="{{ url_for('edit_product', id=product.id) }}" class="btn btn-sm btn-outline-primary btn-icon">
