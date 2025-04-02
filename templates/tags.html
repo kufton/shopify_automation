@@ -7,6 +7,33 @@
     <div class="col-md-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="section-heading">Tags</h1>
+            {# Add Search Form #}
+            <div class="d-flex align-items-center ms-auto">
+                {# Filter Button Group #}
+                <div class="btn-group me-2" role="group" aria-label="Filter tags">
+                    <a href="{{ url_for('tags', search=search, filter_no_products='false') }}" class="btn btn-outline-secondary {% if not filter_no_products %}active{% endif %}">All Tags</a>
+                    <a href="{{ url_for('tags', search=search, filter_no_products='true') }}" class="btn btn-outline-secondary {% if filter_no_products %}active{% endif %}">No Products</a>
+                </div>
+                {# Search Form #}
+                <form action="{{ url_for('tags') }}" method="get" style="max-width: 250px;">
+                    {# Hidden input to maintain filter state during search #}
+                    {% if filter_no_products %}
+                    <input type="hidden" name="filter_no_products" value="true">
+                    {% endif %}
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="search" placeholder="Search tags..." value="{{ search or '' }}">
+                        <button type="submit" class="btn btn-outline-secondary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        {# Clear button should clear search but keep filter #}
+                        {% if search %}
+                        <a href="{{ url_for('tags', filter_no_products='true' if filter_no_products else 'false') }}" class="btn btn-outline-secondary" title="Clear search">
+                            <i class="fas fa-times"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
         </div>
         
         {% if tags %}
@@ -18,7 +45,7 @@
                     </div>
                     <div class="col-md-6 text-end">
                         {# Button to remove app-managed tags from the current store's products #}
-                        <form action="{{ url_for('remove_all_store_tags') }}" method="post" class="d-inline-block me-2" onsubmit="return confirm('Are you sure you want to remove all APP-MANAGED tags from ALL products in the current store ({{ current_store.name if current_store else \'Unknown Store\' }})? Tags added externally (e.g., via Shopify) will NOT be removed.');">
+                        <form action="{{ url_for('remove_all_store_tags') }}" method="post" class="d-inline-block me-2" onsubmit="return confirm('Are you sure you want to remove all APP-MANAGED tags from ALL products in the current store ({{ current_store.name if current_store else 'Unknown Store' }})? Tags added externally (e.g., via Shopify) will NOT be removed.');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-danger" {% if not current_store %}disabled title="Please select a store first"{% endif %}>
                                 <i class="fas fa-times-circle"></i> Remove App Tags from Store
@@ -39,6 +66,11 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
+                                <th width="40"> <!-- Column for checkboxes -->
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="select-all-tags" title="Select all tags on this page">
+                                    </div>
+                                </th>
                                 <th>Tag Name</th>
                                 <th>Product Count</th>
                                 <th>Collection</th>
@@ -46,13 +78,20 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for tag, product_count in tags %}
+                            {% for tag, product_count in tags %} {# Revert to original loop syntax #}
                             <tr>
+                                <td> <!-- Checkbox column -->
+                                    <div class="form-check">
+                                        <input class="form-check-input tag-checkbox" type="checkbox" name="tag_ids" value="{{ tag.id }}">
+                                    </div>
+                                </td>
                                 <td>{{ tag.name }}</td>
                                 <td>
+                                    {# Use product_count variable #}
                                     <span class="badge bg-primary rounded-pill">{{ product_count }}</span>
                                 </td>
                                 <td>
+                                    {# Use tag variable #}
                                     {% if tag.collections %}
                                     {% for collection in tag.collections %}
                                     <a href="{{ url_for('view_collection', id=collection.id) }}" class="badge bg-success">
@@ -64,6 +103,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="action-buttons">
+                                    {# Use product_count and tag variables #}
                                     {% if product_count > 0 %}
                                     <form action="{{ url_for('add_collection') }}" method="get" class="d-inline">
                                         <input type="hidden" name="tag_id" value="{{ tag.id }}">
@@ -72,6 +112,7 @@
                                         </button>
                                     </form>
                                     {% endif %}
+                                    {# Use tag variable #}
                                     <form action="{{ url_for('delete_tag', id=tag.id) }}" method="post" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm">
@@ -84,15 +125,38 @@
                         </tbody>
                     </table>
                 </div>
+                {# Add Bulk Delete Form Wrapper and Footer #}
+                <form action="{{ url_for('bulk_delete_tags') }}" method="post" id="bulk-delete-tags-form">
+                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                     {# Hidden inputs for tag_ids will be added by JS #}
+                </form>
             </div>
-            
+            <div class="card-footer bg-light">
+                 <button type="submit" form="bulk-delete-tags-form" class="btn btn-danger me-2" id="bulk-delete-tags-button" disabled>
+                     <i class="fas fa-trash"></i> Delete Selected Tags
+                 </button>
+                 
+                 {# Add Delete All Filtered Button/Form #}
+                 <form action="{{ url_for('delete_filtered_tags') }}" method="post" id="delete-filtered-tags-form" class="d-inline" onsubmit="return confirm('Are you sure you want to delete ALL tags matching the current filter? This action cannot be undone.');">
+                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                     {# Pass current filters #}
+                     <input type="hidden" name="search" value="{{ search or '' }}">
+                     <input type="hidden" name="filter_no_products" value="{{ 'true' if filter_no_products else 'false' }}">
+                     
+                     <button type="submit" class="btn btn-danger" id="delete-filtered-tags-button" {% if not tags %}disabled{% endif %}>
+                         <i class="fas fa-dumpster-fire"></i> Delete All Filtered Tags
+                     </button>
+                 </form>
+            </div>
+
             {% if pagination and pagination.pages > 1 %}
             <div class="card-footer">
                 <nav aria-label="Page navigation">
                     <ul class="pagination justify-content-center mb-0">
                         {% if pagination.page > 1 %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('tags', page=pagination.page-1) }}" aria-label="Previous">
+                            {# Add search and filter params to pagination links #}
+                            <a class="page-link" href="{{ url_for('tags', page=pagination.page-1, search=search, filter_no_products='true' if filter_no_products else 'false') }}" aria-label="Previous">
                                 <span aria-hidden="true">&laquo;</span>
                             </a>
                         </li>
@@ -109,14 +173,16 @@
                             </li>
                             {% else %}
                             <li class="page-item">
-                                <a class="page-link" href="{{ url_for('tags', page=page_num) }}">{{ page_num }}</a>
+                                {# Add search and filter params to pagination links #}
+                                <a class="page-link" href="{{ url_for('tags', page=page_num, search=search, filter_no_products='true' if filter_no_products else 'false') }}">{{ page_num }}</a>
                             </li>
                             {% endif %}
                         {% endfor %}
                         
                         {% if pagination.page < pagination.pages %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('tags', page=pagination.page+1) }}" aria-label="Next">
+                            {# Add search and filter params to pagination links #}
+                            <a class="page-link" href="{{ url_for('tags', page=pagination.page+1, search=search, filter_no_products='true' if filter_no_products else 'false') }}" aria-label="Next">
                                 <span aria-hidden="true">&raquo;</span>
                             </a>
                         </li>
@@ -169,4 +235,75 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('select-all-tags');
+    const tagCheckboxes = document.querySelectorAll('.tag-checkbox');
+    const bulkDeleteButton = document.getElementById('bulk-delete-tags-button');
+    const bulkDeleteForm = document.getElementById('bulk-delete-tags-form');
+
+    function updateButtonState() {
+        const anyChecked = Array.from(tagCheckboxes).some(checkbox => checkbox.checked);
+        bulkDeleteButton.disabled = !anyChecked;
+    }
+
+    function updateSelectAllState() {
+        const allChecked = tagCheckboxes.length > 0 && Array.from(tagCheckboxes).every(checkbox => checkbox.checked);
+        if (selectAllCheckbox) { // Check if selectAllCheckbox exists (it might not if there are no tags)
+             selectAllCheckbox.checked = allChecked;
+        }
+        updateButtonState();
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            tagCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+            updateButtonState();
+        });
+    }
+
+    tagCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateSelectAllState);
+    });
+
+    if (bulkDeleteForm) {
+        bulkDeleteForm.addEventListener('submit', function(e) {
+            // Clear previous hidden inputs if any (though not strictly needed here)
+            bulkDeleteForm.querySelectorAll('input[name="tag_ids"][type="hidden"]').forEach(input => input.remove());
+
+            const selectedCheckboxes = Array.from(tagCheckboxes).filter(checkbox => checkbox.checked);
+            const selectedCount = selectedCheckboxes.length;
+
+            if (selectedCount === 0) {
+                e.preventDefault();
+                alert('Please select at least one tag to delete.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${selectedCount} selected tag(s)? This will remove the tag entirely and its association with all products. This action cannot be undone.`)) {
+                e.preventDefault();
+                return;
+            }
+
+            // Add hidden inputs for selected tag IDs
+            selectedCheckboxes.forEach(checkbox => {
+                 const input = document.createElement('input');
+                 input.type = 'hidden';
+                 input.name = 'tag_ids';
+                 input.value = checkbox.value;
+                 bulkDeleteForm.appendChild(input);
+            });
+        });
+    }
+
+    // Initial state check
+    updateSelectAllState();
+});
+</script>
 {% endblock %}

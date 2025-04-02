@@ -1050,15 +1050,26 @@ def create_app():
     
     @app.route('/tags')
     def tags():
-        """List all tags with product counts with pagination."""
+        """List all tags with product counts, search, and pagination."""
         page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '').strip() # Get search term
+        filter_no_products = request.args.get('filter_no_products', 'false').lower() == 'true' # Get filter param
         per_page = 20  # Number of tags per page
         
         # Get total count for pagination (filtered by store)
-        tags_count_query = db.session.query(Tag)
+        # Base query for counting (filtered by store, search, and no_products filter)
+        tags_count_query = db.session.query(Tag.id) # Query only ID for count efficiency
         if g.current_store:
-            tags_count_query = tags_count_query.filter_by(store_id=g.current_store.id)
+            tags_count_query = tags_count_query.filter(Tag.store_id == g.current_store.id)
+        if search:
+            search_term = f"%{search}%"
+            tags_count_query = tags_count_query.filter(Tag.name.ilike(search_term))
         
+        # Apply the no_products filter to the count query if active
+        if filter_no_products:
+            # We need to join to count products and filter where count is 0
+            tags_count_query = tags_count_query.outerjoin(product_tags).group_by(Tag.id).having(func.count(product_tags.c.product_id) == 0)
+            
         total = tags_count_query.count()
         
         # Get paginated tags with product counts (filtered by store)
@@ -1069,6 +1080,14 @@ def create_app():
         
         if g.current_store:
             tags_query = tags_query.filter(Tag.store_id == g.current_store.id)
+        # Add search filter to the main query
+        if search:
+            search_term = f"%{search}%"
+            tags_query = tags_query.filter(Tag.name.ilike(search_term))
+        
+        # Add no_products filter to the main query
+        if filter_no_products:
+            tags_query = tags_query.having(func.count(product_tags.c.product_id) == 0)
         
         # Manual pagination since we're using a complex query
         offset = (page - 1) * per_page
@@ -1082,16 +1101,126 @@ def create_app():
             'pages': (total + per_page - 1) // per_page  # Ceiling division
         }
         
-        return render_template('tags.html', tags=tags, pagination=pagination)
+        # Pass search term to template for display in search box
+        # --- DEBUGGING ---
+        print("DEBUG: Data being passed to tags.html:")
+        if isinstance(tags, list):
+            print(f"  - 'tags' variable is a list with length: {len(tags)}")
+            for i, item in enumerate(tags):
+                item_type = type(item)
+                item_content = str(item)[:200] # Limit output length
+                print(f"  - Item {i}: Type={item_type}, Content={item_content}")
+                if isinstance(item, tuple) and len(item) > 0:
+                     print(f"    - First element type: {type(item[0])}")
+                     # Check if first element has an 'id' attribute
+                     if hasattr(item[0], 'id'):
+                         print(f"    - First element has 'id': {item[0].id}")
+                     else:
+                         print(f"    - First element LACKS 'id' attribute")
+                elif item is None:
+                     print(f"    - Item {i} is None")
+        else:
+            print(f"  - 'tags' variable is not a list, it's: {type(tags)}")
+        # --- END DEBUGGING ---
+
+        return render_template('tags.html', tags=tags, pagination=pagination, search=search, filter_no_products=filter_no_products)
     
     @app.route('/tags/<int:id>/delete', methods=['POST'])
     def delete_tag(id):
-        """Delete a tag."""
+        """Delete a single tag."""
         tag = Tag.query.get_or_404(id)
+
+        # Ensure the tag belongs to the current store or there's no store context
+        if g.current_store and tag.store_id != g.current_store.id:
+            flash('Tag not found in the current store.', 'danger')
+            # Preserve search query on redirect if present
+            search_query = request.args.get('search', '')
+            return redirect(url_for('tags', search=search_query))
+    
+    @app.route('/tags/bulk-delete', methods=['POST'])
+    def bulk_delete_tags():
+        """Bulk delete selected tags."""
+        tag_ids = request.form.getlist('tag_ids')
+        search_query = request.args.get('search', '') # Preserve search query for redirect
+    
+        if not tag_ids:
+            flash('No tags selected for deletion.', 'warning')
+            return redirect(url_for('tags', search=search_query))
+    
+        # Ensure we only delete tags belonging to the current store
+        tags_query = Tag.query.filter(Tag.id.in_(tag_ids))
+        if g.current_store:
+            tags_query = tags_query.filter_by(store_id=g.current_store.id)
+    
+        tags_to_delete = tags_query.all()
+        deleted_count = len(tags_to_delete)
+    
+        if not tags_to_delete:
+            flash('No valid tags found for deletion in the current store.', 'warning')
+            return redirect(url_for('tags', search=search_query))
+    
+        for tag in tags_to_delete:
+            # Deleting the tag object. SQLAlchemy should handle removing associations
+            # based on cascade rules if set, otherwise, associations might remain pointing
+            # to a non-existent tag ID (less ideal). Check cascade settings if issues arise.
+            db.session.delete(tag)
+    
+        db.session.commit()
+        flash(f'{deleted_count} tag(s) deleted successfully.', 'success')
+        return redirect(url_for('tags', search=search_query))
+    
+    @app.route('/tags/delete-filtered', methods=['POST'])
+    def delete_filtered_tags():
+        """Delete all tags matching the current filter criteria."""
+        search = request.form.get('search', '').strip()
+        filter_no_products = request.form.get('filter_no_products', 'false').lower() == 'true'
+        
+        # Build the query to find tags to delete, mirroring the logic in the tags() route
+        tags_query = db.session.query(Tag) # Query the Tag object itself
+        
+        if g.current_store:
+            tags_query = tags_query.filter(Tag.store_id == g.current_store.id)
+            
+        if search:
+            search_term = f"%{search}%"
+            tags_query = tags_query.filter(Tag.name.ilike(search_term))
+            
+        if filter_no_products:
+            # Join with product_tags and filter tags having zero associated products
+            tags_query = tags_query.outerjoin(product_tags).group_by(Tag.id).having(func.count(product_tags.c.product_id) == 0)
+            
+        # Get all tags matching the criteria (no pagination)
+        tags_to_delete = tags_query.all()
+        deleted_count = len(tags_to_delete)
+        
+        if not tags_to_delete:
+            flash('No tags found matching the current filter criteria.', 'info')
+            # Redirect back, preserving filters
+            return redirect(url_for('tags', search=search, filter_no_products='true' if filter_no_products else 'false'))
+            
+        # Perform the deletion
+        for tag in tags_to_delete:
+            db.session.delete(tag)
+            
+        try:
+            db.session.commit()
+            flash(f'Successfully deleted {deleted_count} tag(s) matching the filter criteria.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error deleting filtered tags: {str(e)}', 'danger')
+            
+        # Redirect back, preserving filters
+        return redirect(url_for('tags', search=search, filter_no_products='true' if filter_no_products else 'false'))
+
+        # Note: Deleting a tag might cascade and remove associations depending on DB setup.
+        # Consider if you only want to remove associations instead of deleting the tag record.
+        # For now, we delete the tag record itself.
         db.session.delete(tag)
         db.session.commit()
-        flash('Tag deleted successfully', 'success')
-        return redirect(url_for('tags'))
+        flash(f'Tag "{tag.name}" deleted successfully', 'success')
+        # Preserve search query on redirect if present
+        search_query = request.args.get('search', '')
+        return redirect(url_for('tags', search=search_query))
     
     @app.route('/tags/remove-all-from-store', methods=['POST'])
     def remove_all_store_tags():
