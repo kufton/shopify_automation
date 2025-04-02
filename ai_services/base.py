@@ -1,4 +1,5 @@
 import asyncio
+import re # Import regex module
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional
 
@@ -41,7 +42,11 @@ class BaseAIService(ABC):
 
     def clean_tags(self, tags_text: str) -> List[str]:
         """Cleans the raw tag string from the AI."""
-        tags = [tag.strip().lower() for tag in tags_text.split(',')]
+        # First, replace all internal whitespace sequences (including newlines) with a single space
+        cleaned_text = re.sub(r'\s+', ' ', tags_text).strip()
+
+        # Now split by comma and process
+        tags = [tag.strip().lower() for tag in cleaned_text.split(',')]
         tags = [tag for tag in tags if tag] # Remove empty
         tags = self.filter_generic_tags(tags)
         tags = [tag for tag in tags if ' ' in tag] # Remove single-word

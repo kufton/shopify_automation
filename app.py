@@ -357,6 +357,25 @@ def create_app():
             flash(f'Tag "{tag.name}" removed from product', 'success')
         
         return redirect(url_for('manage_product_tags', id=product_id))
+
+    @app.route('/products/<int:product_id>/tags/remove-all', methods=['POST'])
+    def remove_all_product_tags(product_id):
+        """Remove all tags from a specific product."""
+        product = Product.query.get_or_404(product_id)
+
+        # Ensure the product belongs to the current store or there's no store context
+        if g.current_store and product.store_id != g.current_store.id:
+             flash('Product not found in the current store.', 'danger')
+             return redirect(url_for('products')) # Or appropriate redirect
+
+        if not product.tags:
+            flash('Product already has no tags.', 'info')
+        else:
+            product.tags = [] # Clear the relationship
+            db.session.commit()
+            flash(f'All tags removed from product "{product.title}"', 'success')
+
+        return redirect(url_for('manage_product_tags', id=product_id))
     
     @app.route('/products/auto-tag', methods=['POST'])
     async def auto_tag_products():
@@ -1068,6 +1087,35 @@ def create_app():
         db.session.delete(tag)
         db.session.commit()
         flash('Tag deleted successfully', 'success')
+        return redirect(url_for('tags'))
+    
+    @app.route('/tags/remove-all-from-store', methods=['POST'])
+    def remove_all_store_tags():
+        """Remove all tags from all products in the current store."""
+        if not g.current_store:
+            flash('Please select a store first.', 'warning')
+            return redirect(url_for('tags'))
+    
+        # Find all products associated with the current store
+        products_in_store = Product.query.filter_by(store_id=g.current_store.id).all()
+    
+        if not products_in_store:
+            flash('No products found in the current store.', 'info')
+            return redirect(url_for('tags'))
+    
+        # Iterate and clear tags for each product
+        removed_count = 0
+        for product in products_in_store:
+            if product.tags:
+                product.tags = []
+                removed_count += 1
+    
+        if removed_count > 0:
+            db.session.commit()
+            flash(f'Removed all tags from {removed_count} product(s) in store "{g.current_store.name}".', 'success')
+        else:
+            flash(f'No products with tags found in store "{g.current_store.name}".', 'info')
+    
         return redirect(url_for('tags'))
     
     @app.route('/api/products', methods=['GET'])

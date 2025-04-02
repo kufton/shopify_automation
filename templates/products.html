@@ -93,9 +93,10 @@
                                 <td>{{ product.description|safe|truncate(50) if product.description else '' }}</td>
                                 <td>{{ "%.2f"|format(product.price) if product.price else '-' }}</td>
                                 <td>
+                                    {# Add a wrapper div for better control if needed, but let's try whitespace first #}
                                     {% for tag in product.tags %}
-                                    <span class="badge bg-secondary tag-badge">{{ tag.name }}</span>
-                                    {% endfor %}
+                                        {# Ensure clean class definition and add space after span for wrapping #}
+                                        <span class="badge bg-secondary tag-badge">{{ tag.name }}</span> {% endfor %}
                                 </td>
                                 <td class="action-buttons">
                                     <a href="{{ url_for('edit_product', id=product.id) }}" class="btn btn-sm btn-outline-primary btn-icon">
