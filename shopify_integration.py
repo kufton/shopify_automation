@@ -723,6 +723,24 @@ class ShopifyIntegration:
 
         print(f"Exporting collection {collection.name} to store {self.store_url}...") # Add print statement
 
+        # Prepare metafields based on collection attributes
+        metafields = []
+        if hasattr(collection, 'seo_title') and collection.seo_title:
+            metafields.append({
+                "key": "title_tag",
+                "value": collection.seo_title,
+                "type": "single_line_text_field",
+                "namespace": "global"
+            })
+        if hasattr(collection, 'seo_description') and collection.seo_description:
+             metafields.append({
+                 "key": "description_tag",
+                 "value": collection.seo_description,
+                 "type": "single_line_text_field",
+                 "namespace": "global"
+             })
+        # TODO: Add logic for seo_defaults if needed later
+
         # If this is a smart collection (based on a tag), create a smart collection in Shopify
         if collection.tag:
             # Create a smart collection with a rule based on the tag

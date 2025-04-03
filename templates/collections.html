@@ -36,9 +36,9 @@
                         <span class="selected-count"></span>
                     </button>
                 </form>
-                <form action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="me-2 mb-2"> {# Removed d-inline-block, Added mb-2 #}
+                <form id="export-all-form" action="{{ url_for('export_all_collections_to_shopify') }}" method="post" class="me-2 mb-2"> {# Added id #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-primary">
+                    <button id="export-all-btn" type="submit" class="btn btn-primary"> {# Added id #}
                         <i class="fas fa-cloud-upload-alt"></i> Export All to Shopify
                     </button>
                 </form>
@@ -366,9 +366,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+// Handle Export All form submission for loading state
+const exportAllForm = document.getElementById('export-all-form');
+const exportAllButton = document.getElementById('export-all-btn');
 
-    // Initial state check for buttons
-    updateButtonStates();
+if (exportAllForm && exportAllButton) {
+    exportAllForm.addEventListener('submit', function() {
+        // Disable button and show loading state
+        exportAllButton.disabled = true;
+        exportAllButton.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Exporting...
+        `;
+        // Form submission continues naturally
+    });
+}
+
+// Initial state check for buttons
+updateButtonStates();
 });
+</script>
 </script>
 {% endblock %}
