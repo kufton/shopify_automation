@@ -79,6 +79,26 @@ class BaseAIService(ABC):
         """Generate a semantic keyword map based on a store concept asynchronously."""
         pass
 
+    # --- NEW METHODS FOR BLOG GENERATION ---
+
+    @abstractmethod
+    async def generate_outline_async(self, context: Dict[str, Any]) -> List[str]: # Or Dict, depending on desired outline structure
+        """
+        Generate a blog post outline based on the provided context.
+        Context should include keys like: 'tag_name', 'store_concept', 'target_audience',
+        'tone_of_voice', 'sitemap_url', 'product_examples', 'existing_blogs'.
+        """
+        pass
+
+    @abstractmethod
+    async def generate_content_block_async(self, context: Dict[str, Any]) -> str:
+        """
+        Generate a block of content for a specific part of the blog post.
+        Context should include keys like: 'outline_point', 'full_outline', 'tag_name',
+        'store_concept', 'target_audience', 'tone_of_voice'.
+        """
+        pass
+
     async def batch_generate_tags(self, products: List[Any], batch_size: int = 50) -> List[Tuple[Any, List[str]]]:
         """Generate tags for multiple products in parallel."""
         results = []

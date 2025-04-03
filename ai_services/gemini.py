@@ -370,3 +370,41 @@ class GeminiService(BaseAIService):
         except Exception as e:
             print(f"Error generating Gemini keyword map for concept '{concept[:50]}...': {e}")
             return default_map
+
+    # --- Blog Generation Methods (Placeholders) ---
+
+    async def generate_outline_async(self, context: Dict[str, Any]) -> List[str]:
+        """Generate a blog post outline using Gemini (Placeholder)."""
+        print(f"GeminiService: Generating outline with context: {context.get('tag_name', 'N/A')}")
+        if not self.client:
+            print("Gemini client not configured, cannot generate outline.")
+            return ["Outline generation requires API key/client configuration."]
+
+        # TODO: Implement actual prompt construction and API call using _call_gemini_api
+        # Example context keys: 'tag_name', 'store_concept', 'target_audience',
+        # 'tone_of_voice', 'sitemap_url', 'product_examples', 'existing_blogs'.
+
+        # Placeholder implementation
+        await asyncio.sleep(0.1) # Simulate async call
+        return [
+            f"Gemini Intro to {context.get('tag_name', 'Topic')}",
+            f"Gemini Point 1 about {context.get('tag_name', 'Topic')}",
+            f"Gemini Point 2 about {context.get('tag_name', 'Topic')}",
+            f"Gemini Conclusion for {context.get('tag_name', 'Topic')}"
+        ]
+
+    async def generate_content_block_async(self, context: Dict[str, Any]) -> str:
+        """Generate a block of content for a blog post using Gemini (Placeholder)."""
+        outline_point = context.get('outline_point', 'this section')
+        print(f"GeminiService: Generating content block for: {outline_point}")
+        if not self.client:
+            print("Gemini client not configured, cannot generate content block.")
+            return f"<p>Content generation requires Gemini client configuration. This section is about: {outline_point}</p>"
+
+        # TODO: Implement actual prompt construction and API call using _call_gemini_api
+        # Example context keys: 'outline_point', 'full_outline', 'tag_name',
+        # 'store_concept', 'target_audience', 'tone_of_voice'.
+
+        # Placeholder implementation
+        await asyncio.sleep(0.1) # Simulate async call
+        return f"<p>This is the Gemini-generated content for the section '{outline_point}'. It elaborates on this point within the context of {context.get('tag_name', 'the blog post')}, tailored for {context.get('target_audience', 'the audience')} with a {context.get('tone_of_voice', 'standard')} tone.</p>"

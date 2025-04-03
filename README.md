@@ -4,7 +4,7 @@ Kaleb's updates to apply it for his agency EKOH Marketing, and other in house us
 ## Todo's
 ~~1. add other llm's~~
 ~~2. fix tagging display issue and trackign what tags we've added~~
-3. symantic keyword maps from the concept of the site
+~~3. symantic keyword maps from the concept of the site~~
 4. blog generation and drafting from most popular tags
 5. long tail seo optimization
 6. Backlink research???

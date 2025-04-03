@@ -107,15 +107,32 @@
                                     {% if product_count > 0 %}
                                     <form action="{{ url_for('add_collection') }}" method="get" class="d-inline">
                                         <input type="hidden" name="tag_id" value="{{ tag.id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-success btn-icon">
+                                        <button type="submit" class="btn btn-sm btn-outline-success btn-icon" title="Create Collection from Tag">
                                             <i class="fas fa-folder-plus"></i>
                                         </button>
                                     </form>
                                     {% endif %}
+                                    {# Generate Blog Post Form Button #}
+                                    <form action="{{ url_for('generate_blog_post_from_tag') }}" method="post" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="tag_id" value="{{ tag.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary btn-icon" title="Generate Blog Post from Tag">
+                                            <i class="fas fa-file-alt"></i> {# Using a document icon #}
+                                        </button>
+                                    </form>
                                     {# Use tag variable #}
                                     <form action="{{ url_for('delete_tag', id=tag.id) }}" method="post" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm" title="Delete Tag">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                    </a>
+                                    {# Use tag variable #}
+                                    <form action="{{ url_for('delete_tag', id=tag.id) }}" method="post" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon delete-confirm" title="Delete Tag">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </form>

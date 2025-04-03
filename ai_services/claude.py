@@ -374,3 +374,41 @@ class ClaudeService(BaseAIService):
         except Exception as e:
             print(f"Error generating Claude keyword map for concept '{concept[:50]}...': {e}")
             return default_map
+
+    # --- Blog Generation Methods (Placeholders) ---
+
+    async def generate_outline_async(self, context: Dict[str, Any]) -> List[str]:
+        """Generate a blog post outline using Claude (Placeholder)."""
+        print(f"ClaudeService: Generating outline with context: {context.get('tag_name', 'N/A')}")
+        if not self.api_key:
+            print("API key is missing, cannot generate outline.")
+            return ["Outline generation requires API key."]
+
+        # TODO: Implement actual prompt construction and API call
+        # Example context keys: 'tag_name', 'store_concept', 'target_audience',
+        # 'tone_of_voice', 'sitemap_url', 'product_examples', 'existing_blogs'.
+
+        # Placeholder implementation
+        await asyncio.sleep(0.1) # Simulate async call
+        return [
+            f"Introduction to {context.get('tag_name', 'Topic')}",
+            f"Key Feature 1 of {context.get('tag_name', 'Topic')}",
+            f"Benefit of using {context.get('tag_name', 'Topic')}",
+            f"Conclusion about {context.get('tag_name', 'Topic')}"
+        ]
+
+    async def generate_content_block_async(self, context: Dict[str, Any]) -> str:
+        """Generate a block of content for a blog post using Claude (Placeholder)."""
+        outline_point = context.get('outline_point', 'this section')
+        print(f"ClaudeService: Generating content block for: {outline_point}")
+        if not self.api_key:
+            print("API key is missing, cannot generate content block.")
+            return f"<p>Content generation requires an API key. This section is about: {outline_point}</p>"
+
+        # TODO: Implement actual prompt construction and API call
+        # Example context keys: 'outline_point', 'full_outline', 'tag_name',
+        # 'store_concept', 'target_audience', 'tone_of_voice'.
+
+        # Placeholder implementation
+        await asyncio.sleep(0.1) # Simulate async call
+        return f"<p>This is the generated content for the section about '{outline_point}'. It discusses the importance and details related to the main topic of {context.get('tag_name', 'the blog post')}, keeping in mind the target audience ({context.get('target_audience', 'general readers')}) and maintaining a {context.get('tone_of_voice', 'neutral')} tone.</p>"

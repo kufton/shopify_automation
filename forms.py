@@ -108,3 +108,14 @@ class SEODefaultsForm(FlaskForm):
     collection_twitter_description_template = TextAreaField('Collection Twitter Description Template', validators=[Optional(), Length(max=500)])
     
     submit = SubmitField('Save SEO Defaults')
+
+# --- Add BlogPost Form ---
+class BlogPostForm(FlaskForm, SEOFormMixin):
+   """Form for editing a blog post."""
+   title = StringField('Title', validators=[DataRequired(), Length(max=255)])
+   content = TextAreaField('Content', validators=[DataRequired()])
+   status = SelectField('Status',
+                        choices=[('draft', 'Draft'), ('published', 'Published'), ('failed', 'Failed'), ('outline_generated', 'Outline Generated')],
+                        validators=[DataRequired()])
+   # SEO fields (seo_title, meta_description, etc.) are inherited from SEOFormMixin
+   submit = SubmitField('Save Blog Post')

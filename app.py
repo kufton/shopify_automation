@@ -5,8 +5,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate # Add Migrate import
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import func
-from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule, SEODefaults # Added CleanupRule, SEODefaults
-from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm, CleanupRuleForm # Added CleanupRuleForm
+from models import db, Product, Tag, Collection, EnvVar, product_tags, Store, CleanupRule, SEODefaults, BlogPost # Added BlogPost
+from forms import ProductForm, EnvVarForm, CollectionForm, TagForm, AutoTagForm, CreateCollectionsForm, StoreForm, StoreSelectForm, CleanupRuleForm, BlogPostForm # Added CleanupRuleForm, BlogPostForm
+# Need to create BlogPostForm later
+import asyncio # Add asyncio for async route
 # from claude_integration import ClaudeTaggingService # Replaced by ai_services
 from ai_services import get_ai_service # Import the factory function
 import re # Added re import
@@ -154,7 +156,8 @@ def create_app():
                 db.session.add(env_var)
         
         # Create a default store if none exists
-        if not Store.query.first():
+        # Check only for existence using the ID column to avoid loading non-existent columns during migration
+        if not db.session.query(Store.id).first():
             # Try to get store URL from environment
             store_url = Config.SHOPIFY_STORE_URL
             if store_url:
@@ -2053,6 +2056,244 @@ def create_app():
     
     # --- CLI Commands ---
     @app.cli.command("seed-seo-defaults")
+    # --- Blog Post Routes (Placeholders) ---
+
+    @app.route('/blog')
+    def blog_posts():
+        """List all blog posts for the current store."""
+        if not g.current_store:
+            flash("Please select a store first.", "warning")
+            return redirect(url_for('stores'))
+
+        posts = BlogPost.query.filter_by(store_id=g.current_store.id).order_by(BlogPost.updated_at.desc()).all()
+        # Pass the variable as 'blog_posts' to match the template
+        return render_template('blog_posts.html', blog_posts=posts)
+        return f"Blog Posts for Store {g.current_store.name} (Template missing): {len(posts)} posts found."
+
+
+    @app.route('/blog/<int:id>/edit', methods=['GET', 'POST'])
+    def edit_blog_post(id):
+        """Edit an existing blog post."""
+        post = BlogPost.query.get_or_404(id)
+        # Ensure post belongs to the current store
+        if not g.current_store or post.store_id != g.current_store.id:
+             flash("Blog post not found in the current store.", "danger")
+             return redirect(url_for('blog_posts'))
+
+        form = BlogPostForm(obj=post)
+        if form.validate_on_submit():
+            form.populate_obj(post)
+            db.session.commit()
+            flash('Blog post updated successfully.', 'success')
+            return redirect(url_for('blog_posts'))
+        
+        # For GET requests or if form validation fails, render the form
+        return render_template('blog_post_form.html', form=form, title='Edit Blog Post', post=post)
+        return f"Edit Blog Post {id} (Form/Template missing): {post.title}"
+
+    @app.route('/blog/<int:id>/delete', methods=['POST'])
+    def delete_blog_post(id):
+        """Delete a blog post."""
+        post = BlogPost.query.get_or_404(id)
+        # Ensure post belongs to the current store
+        if not g.current_store or post.store_id != g.current_store.id:
+             flash("Blog post not found in the current store.", "danger")
+             return redirect(url_for('blog_posts'))
+
+        db.session.delete(post)
+        db.session.commit()
+        flash('Blog post deleted successfully.', 'success')
+        return redirect(url_for('blog_posts'))
+
+    @app.route('/blog/generate', methods=['POST'])
+    async def generate_blog_post_from_tag():
+        """Triggers the multi-stage blog post generation process."""
+        if not g.current_store:
+            flash("Please select a store first.", "warning")
+            return redirect(url_for('tags')) # Or wherever generation is triggered from
+
+        tag_id = request.form.get('tag_id')
+        if not tag_id:
+            flash("No tag selected for blog generation.", "warning")
+            return redirect(url_for('tags')) # Or relevant page
+
+        tag = Tag.query.filter_by(id=tag_id, store_id=g.current_store.id).first()
+        if not tag:
+            flash("Selected tag not found in the current store.", "danger")
+            return redirect(url_for('tags'))
+
+        if not ai_service or not ai_service.api_key:
+             flash(f"AI Service ({Config.AI_PROVIDER}) not configured or API key missing. Cannot generate blog post.", "danger")
+             return redirect(url_for('tags'))
+
+        flash(f"Starting blog post generation for tag '{tag.name}'. This may take some time...", "info")
+
+        # --- Start Multi-Stage Generation Logic ---
+        new_post = None # Initialize in case of early failure
+        try:
+            # 1. Gather Context
+            store = g.current_store
+            # TODO: Add product_examples and existing_blogs retrieval logic
+            # Example: Fetch top 5 product titles for the tag
+            product_examples_list = [p.title for p in Product.query.join(product_tags).join(Tag).filter(Tag.id == tag.id, Product.store_id == store.id).limit(5).all()]
+            # Example: Fetch recent 5 blog post titles for the store
+            existing_blogs_list = [b.title for b in BlogPost.query.filter_by(store_id=store.id).order_by(BlogPost.created_at.desc()).limit(5).all()]
+
+            context = {
+                'tag_name': tag.name,
+                'store_concept': store.concept,
+                'target_audience': store.target_audience,
+                'tone_of_voice': store.tone_of_voice,
+                'sitemap_url': store.sitemap_url,
+                'product_examples': product_examples_list,
+                'existing_blogs': existing_blogs_list
+            }
+
+            # 2. Construct Initial Prompt (Refined Placeholder)
+            initial_prompt = f"""Generate a detailed blog post outline about '{context['tag_name']}'.
+Store Concept: {context['store_concept']}
+Target Audience: {context['target_audience']}
+Tone of Voice: {context['tone_of_voice']}
+Consider these products: {', '.join(context['product_examples'])}
+Consider these existing posts: {', '.join(context['existing_blogs'])}
+Sitemap (if relevant): {context['sitemap_url']}
+Output the outline as a JSON list of strings."""
+            # TODO: Further refine prompt based on AI provider best practices
+
+            # 3. Generate Outline
+            # Ensure the AI service method is implemented to handle the context dict
+            outline = await ai_service.generate_outline_async(context)
+
+            # 4. Create Preliminary BlogPost Record
+            new_post = BlogPost(
+                title=f"Draft: {tag.name} Blog Post", # Placeholder title
+                content=f"Outline generated for '{tag.name}'. Content generation pending.", # Placeholder content
+                status='outline_generated', # Indicate outline is done, content pending
+                store_id=store.id,
+                source_tag_id=tag.id,
+                generated_by_model=ai_service.model_name,
+                prompt_text=initial_prompt, # Store the initial prompt
+                outline=outline # Store the generated outline (assuming it's JSON compatible)
+            )
+            db.session.add(new_post)
+            db.session.commit() # Commit to get the ID and save initial state
+
+            # --- Start Content Generation Loop (Steps G-K) ---
+            if new_post and new_post.outline and new_post.status == 'outline_generated':
+                content_blocks = []
+                full_outline_str = json.dumps(new_post.outline, indent=2) # For context in prompts
+
+                # --- Generate Introduction (Implicit Step) ---
+                try:
+                    intro_context = context.copy() # Start with base context
+                    intro_context['section_topic'] = "Introduction"
+                    intro_context['full_outline'] = full_outline_str
+                    intro_prompt = f"""Write an engaging introduction for a blog post about '{context['tag_name']}'.
+Store Concept: {context['store_concept']}
+Target Audience: {context['target_audience']}
+Tone of Voice: {context['tone_of_voice']}
+Full Outline (for context):
+{full_outline_str}"""
+                    # TODO: Refine intro prompt structure based on AI service needs
+                    print(f"Generating introduction for: {tag.name}") # Debug log
+                    intro_block = await ai_service.generate_content_block_async(context=intro_context, prompt_override=intro_prompt)
+                    content_blocks.append(intro_block)
+                except Exception as block_error:
+                    print(f"Error generating introduction block: {block_error}")
+                    raise ValueError(f"Failed during introduction generation: {block_error}") # Propagate to main handler
+
+                # --- Loop Through Outline Sections (Step G) ---
+                for section_heading in new_post.outline:
+                    try:
+                        section_context = context.copy()
+                        section_context['section_topic'] = section_heading
+                        section_context['full_outline'] = full_outline_str
+                        section_prompt = f"""Write the content for the section titled '{section_heading}' of a blog post about '{context['tag_name']}'.
+Store Concept: {context['store_concept']}
+Target Audience: {context['target_audience']}
+Tone of Voice: {context['tone_of_voice']}
+Full Outline (for context):
+{full_outline_str}"""
+                        # TODO: Refine section prompt structure
+                        print(f"Generating content for section: {section_heading}") # Debug log
+                        content_block = await ai_service.generate_content_block_async(context=section_context, prompt_override=section_prompt)
+                        content_blocks.append(f"\n## {section_heading}\n\n{content_block}") # Add heading markdown
+                    except Exception as block_error:
+                        print(f"Error generating content block for '{section_heading}': {block_error}")
+                        # Decide whether to continue or fail the whole post
+                        raise ValueError(f"Failed during content generation for section '{section_heading}': {block_error}") # Propagate
+
+                # --- Generate Conclusion (Implicit Step) ---
+                try:
+                    conclusion_context = context.copy()
+                    conclusion_context['section_topic'] = "Conclusion"
+                    conclusion_context['full_outline'] = full_outline_str
+                    conclusion_prompt = f"""Write a compelling conclusion for the blog post about '{context['tag_name']}'. Summarize the key points based on the outline.
+Store Concept: {context['store_concept']}
+Target Audience: {context['target_audience']}
+Tone of Voice: {context['tone_of_voice']}
+Full Outline (for context):
+{full_outline_str}"""
+                    # TODO: Refine conclusion prompt
+                    print(f"Generating conclusion for: {tag.name}") # Debug log
+                    conclusion_block = await ai_service.generate_content_block_async(context=conclusion_context, prompt_override=conclusion_prompt)
+                    content_blocks.append(f"\n## Conclusion\n\n{conclusion_block}")
+                except Exception as block_error:
+                    print(f"Error generating conclusion block: {block_error}")
+                    raise ValueError(f"Failed during conclusion generation: {block_error}") # Propagate
+
+                # --- Combine Blocks & Generate Title (Step K) ---
+                final_content = "\n".join(content_blocks).strip()
+                # Simple placeholder title strategy
+                final_title = f"Blog Post about {tag.name}"
+                # TODO: Consider a placeholder call to a title generation function if needed later
+                # final_title = await ai_service.generate_title_async(context=context, full_content=final_content)
+
+                # --- Update BlogPost Record (Step L) ---
+                new_post.title = final_title
+                new_post.content = final_content
+                new_post.status = 'draft' # Update status to draft
+                db.session.commit() # Commit the final content and status
+
+                flash(f"Successfully generated draft blog post for tag '{tag.name}'.", "success")
+                return redirect(url_for('edit_blog_post', id=new_post.id))
+            elif new_post and new_post.status != 'outline_generated':
+                 # Should not happen if logic flows correctly, but handle defensively
+                 flash(f"Blog post (ID: {new_post.id}) was not in 'outline_generated' state. Cannot generate content.", "warning")
+                 return redirect(url_for('edit_blog_post', id=new_post.id))
+            else:
+                 # Outline generation likely failed earlier and was handled by the except block
+                 flash("Previous step (outline generation) may have failed. Cannot proceed.", "danger")
+                 # Redirect back to tags page or blog list
+                 return redirect(url_for('tags')) # Or 'blog_posts' if that exists
+
+            # --- End Content Generation Loop ---
+
+        except Exception as e:
+            db.session.rollback() # Rollback any partial saves
+            print(f"Error during blog post generation: {e}")
+            # Update the post status to 'failed' if it was created before the error
+            if new_post and new_post.id:
+                # Re-fetch the object in the current session if necessary, or just update
+                post_to_fail = db.session.get(BlogPost, new_post.id)
+                if post_to_fail:
+                    post_to_fail.status = 'failed'
+                    # Update content to reflect failure stage (outline or content)
+                    failure_stage = "content generation" if post_to_fail.status == 'outline_generated' else "outline generation"
+                    post_to_fail.content = f"Blog post generation failed during {failure_stage}: {e}\n\nAttempted Prompt (Initial):\n{post_to_fail.prompt_text or 'N/A'}"
+                    # Optionally add more context like the outline if failure happened during content gen
+                    if failure_stage == "content generation" and post_to_fail.outline:
+                        try:
+                            outline_str = json.dumps(post_to_fail.outline, indent=2)
+                            post_to_fail.content += f"\n\nOutline:\n{outline_str}"
+                        except Exception:
+                            post_to_fail.content += "\n\nOutline: (Error displaying outline)"
+                    db.session.commit() # Correctly indented commit
+            flash(f"Error generating blog post for tag '{tag.name}': {e}", "danger")
+            return redirect(url_for('tags')) # Redirect back
+
+    # --- End Blog Post Routes ---
+
     def seed_seo_defaults():
         """Seeds the SEODefaults table with default templates for each store."""
         print("Seeding SEO defaults...")

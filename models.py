@@ -52,6 +52,9 @@ class Store(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     concept = db.Column(db.Text, nullable=True) # Added field for store concept
     keyword_map = db.Column(JSON, nullable=True) # Added field for semantic keyword map
+    target_audience = db.Column(db.Text, nullable=True) # ADDED: Description of target audience
+    tone_of_voice = db.Column(db.String(100), nullable=True) # ADDED: Desired tone (e.g., 'friendly', 'professional')
+    sitemap_url = db.Column(db.String(500), nullable=True) # ADDED: URL to the store's sitemap
     
     # Relationships
     products = db.relationship('Product', backref='store', lazy=True, cascade="all, delete-orphan")
@@ -60,6 +63,7 @@ class Store(db.Model):
     credentials = db.relationship('StoreCredentials', backref='store', lazy=True, cascade="all, delete-orphan")
     cleanup_rules = db.relationship('CleanupRule', backref='store', lazy=True, cascade="all, delete-orphan")
     seo_defaults = db.relationship('SEODefaults', backref='store', lazy=True, cascade="all, delete-orphan") # Added SEO Defaults relationship
+    blog_posts = db.relationship('BlogPost', backref='store', lazy=True, cascade="all, delete-orphan") # Added BlogPost relationship
     
     def __repr__(self):
         return f'<Store {self.name}>'
@@ -254,3 +258,53 @@ class SEODefaults(db.Model):
 
     def __repr__(self):
         return f'<SEODefaults store={self.store_id} type={self.entity_type}>'
+
+# --- Blog Post Model ---
+class BlogPost(db.Model, SEOFields):
+    """Blog Post model."""
+    __tablename__ = 'blog_posts'
+    __table_args__ = (
+        db.Index('idx_blogpost_status', 'status'),
+        db.Index('idx_blogpost_store_tag', 'store_id', 'source_tag_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False) # Can be generated initially or after outline
+    content = db.Column(db.Text, nullable=False) # Stores the FINAL combined content
+    status = db.Column(db.String(50), nullable=False, default='draft', index=True) # e.g., 'draft', 'published', 'archived'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    generated_by_model = db.Column(db.String(100), nullable=True) # Tracks AI model used
+    prompt_text = db.Column(db.Text, nullable=False) # Stores the INITIAL prompt used for the outline
+    outline = db.Column(JSON, nullable=True) # Stores the generated outline (e.g., list of strings or structured JSON)
+
+    # Store relationship
+    store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)
+    # store relationship defined via backref in Store model
+
+    # Link to the source Tag that inspired the post
+    source_tag_id = db.Column(db.Integer, db.ForeignKey('tags.id'), nullable=True) # Nullable if a post can be created manually
+    source_tag = db.relationship('Tag', backref=db.backref('generated_blog_posts', lazy=True))
+
+    def __repr__(self):
+        return f'<BlogPost {self.id}: {self.title[:50]}... ({self.status})>'
+
+    def to_dict(self):
+        # Include SEO fields
+        seo_dict = {key: getattr(self, key) for key in SEOFields.__dict__ if not key.startswith('_') and not callable(getattr(SEOFields, key))}
+        base_dict = {
+            'id': self.id,
+            'title': self.title,
+            # 'content': self.content, # Omit full content for list views
+            'status': self.status,
+            'store_id': self.store_id,
+            'source_tag_id': self.source_tag_id,
+            'source_tag_name': self.source_tag.name if self.source_tag else None,
+            'generated_by_model': self.generated_by_model,
+            'outline': self.outline, # Include outline
+            # 'prompt_text': self.prompt_text, # Omit prompt text for list views
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        base_dict.update(seo_dict)
+        return base_dict
