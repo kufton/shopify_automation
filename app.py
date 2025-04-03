@@ -16,6 +16,66 @@ from config import Config
 # from auto_migrate import run_migrations # Remove old migration import
 import json
 import re # Make sure re is imported if not already done by previous step
+from models import Product, Collection, Store # Ensure these are imported if not already
+
+# --- SEO Template Helper ---
+def generate_seo_field(entity, field_name, template_string, store):
+    """Generates SEO field content based on a template string and entity data."""
+    if not template_string:
+        return None # No template provided
+
+    variables = {}
+    entity_type = 'product' if isinstance(entity, Product) else 'collection'
+
+    # Common variables
+    variables['store_name'] = store.name if store else Config.DEFAULT_STORE_NAME # Use a default if no store context
+
+    # Entity-specific variables
+    if entity_type == 'product':
+        # Apply cleanup rules to text fields before using them
+        variables['title'] = apply_cleanup_rules(entity.title or '')
+        variables['price'] = f"${entity.price:.2f}" if entity.price is not None else '' # Basic price formatting
+        raw_description = entity.description or ''
+        cleaned_description = apply_cleanup_rules(raw_description)
+        variables['description_excerpt'] = cleaned_description[:100] + ('...' if len(cleaned_description) > 100 else '')
+        # Get primary tag (first tag if available) - apply cleanup? Maybe not needed for tags.
+        variables['primary_tag'] = entity.tags[0].name if entity.tags else ''
+    elif entity_type == 'collection':
+        # Apply cleanup rules to text fields before using them
+        variables['name'] = apply_cleanup_rules(entity.name or '')
+        variables['product_count'] = len(entity.products)
+        # Get example products (first 3 names) and clean their titles
+        example_products = [apply_cleanup_rules(p.title or '') for p in entity.products[:3]]
+        variables['example_products'] = ', '.join(example_products)
+        # Apply cleanup? Maybe not needed for tags.
+        variables['tag_name'] = entity.tag.name if entity.tag else ''
+
+    # Perform substitution
+    generated_value = template_string
+    for key, value in variables.items():
+        generated_value = generated_value.replace(f'{{{key}}}', str(value))
+
+    # Define character limits for SEO fields
+    limits = {
+        'meta_title': 60,
+        'meta_description': 160,
+        'og_title': 95,
+        'og_description': 200,
+        'twitter_title': 70,
+        'twitter_description': 200,
+        # Add other limits if necessary
+    }
+ 
+    # Apply length truncation if the field has a defined limit
+    if field_name in limits and len(generated_value) > limits[field_name]:
+        # Simple truncation - might cut words mid-way. Consider smarter truncation if needed.
+        generated_value = generated_value[:limits[field_name]].rsplit(' ', 1)[0] + '...' # Try to end on a whole word
+        # Fallback if rsplit doesn't find a space (very long single word)
+        if len(generated_value) > limits[field_name] + 3: # Check if adding '...' made it too long
+             generated_value = generated_value[:limits[field_name]] + '...'
+ 
+    return generated_value.strip()
+# --- End SEO Template Helper ---
 
 # Helper function to apply cleanup rules
 def apply_cleanup_rules(input_text):
@@ -227,13 +287,49 @@ def create_app():
                 title=form.title.data,
                 description=form.description.data,
                 price=form.price.data,
-                image_url=form.image_url.data
+                image_url=form.image_url.data,
+                # Add SEO fields
+                meta_title=form.meta_title.data,
+                meta_description=form.meta_description.data,
+                og_title=form.og_title.data,
+                og_description=form.og_description.data,
+                og_image=form.og_image.data,
+                # og_type - Assuming default or handle later if needed
+                twitter_card=form.twitter_card.data,
+                twitter_title=form.twitter_title.data,
+                twitter_description=form.twitter_description.data,
+                twitter_image=form.twitter_image.data,
+                canonical_url=form.canonical_url.data
+                # structured_data - Assuming default or handle later if needed
             )
             
             # Associate with current store
             if g.current_store:
                 product.store_id = g.current_store.id
+            
+            # --- Apply SEO Defaults ---
+            if g.current_store:
+                seo_defaults = SEODefaults.query.filter_by(store_id=g.current_store.id, entity_type='product').first()
+                if seo_defaults:
+                    seo_field_template_map = {
+                        'meta_title': seo_defaults.title_template,
+                        'meta_description': seo_defaults.description_template,
+                        'og_title': seo_defaults.og_title_template,
+                        'og_description': seo_defaults.og_description_template,
+                        'twitter_title': seo_defaults.twitter_title_template,
+                        'twitter_description': seo_defaults.twitter_description_template,
+                        # Add other fields like og_image, twitter_image, canonical_url if defaults are needed
+                    }
+                    
+                    for field_name, template_string in seo_field_template_map.items():
+                        current_value = getattr(product, field_name, None)
+                        if not current_value and template_string: # Only generate if field is empty and template exists
+                            generated_value = generate_seo_field(product, field_name, template_string, g.current_store)
+                            setattr(product, field_name, generated_value)
+            # --- End Apply SEO Defaults ---
+                            
             db.session.add(product)
+            # Commit *after* applying defaults
             db.session.commit()
             
             # Auto-tag the product if AI service is configured with an API key
@@ -271,7 +367,31 @@ def create_app():
         product = Product.query.get_or_404(id)
         form = ProductForm(obj=product)
         if form.validate_on_submit():
-            form.populate_obj(product)
+            form.populate_obj(product) # Populates from form first
+            
+            # --- Apply SEO Defaults ---
+            if g.current_store:
+                seo_defaults = SEODefaults.query.filter_by(store_id=g.current_store.id, entity_type='product').first()
+                if seo_defaults:
+                    seo_field_template_map = {
+                        'meta_title': seo_defaults.title_template,
+                        'meta_description': seo_defaults.description_template,
+                        'og_title': seo_defaults.og_title_template,
+                        'og_description': seo_defaults.og_description_template,
+                        'twitter_title': seo_defaults.twitter_title_template,
+                        'twitter_description': seo_defaults.twitter_description_template,
+                        # Add other fields like og_image, twitter_image, canonical_url if defaults are needed
+                    }
+                    
+                    for field_name, template_string in seo_field_template_map.items():
+                        current_value = getattr(product, field_name, None)
+                        # Check if field is empty *after* form population and if template exists
+                        if not current_value and template_string:
+                            generated_value = generate_seo_field(product, field_name, template_string, g.current_store)
+                            setattr(product, field_name, generated_value)
+            # --- End Apply SEO Defaults ---
+                            
+            # Commit *after* applying defaults
             db.session.commit()
             flash('Product updated successfully', 'success')
             return redirect(url_for('products'))
@@ -530,7 +650,20 @@ def create_app():
             collection = Collection(
                 name=form.name.data,
                 slug=slug,
-                description=form.description.data
+                description=form.description.data,
+                # Add SEO fields
+                meta_title=form.meta_title.data,
+                meta_description=form.meta_description.data,
+                og_title=form.og_title.data,
+                og_description=form.og_description.data,
+                og_image=form.og_image.data,
+                # og_type - Assuming default or handle later if needed
+                twitter_card=form.twitter_card.data,
+                twitter_title=form.twitter_title.data,
+                twitter_description=form.twitter_description.data,
+                twitter_image=form.twitter_image.data,
+                canonical_url=form.canonical_url.data
+                # structured_data - Assuming default or handle later if needed
             )
             
             # Associate with current store
@@ -546,7 +679,28 @@ def create_app():
                     for product in tag.products:
                         collection.products.append(product)
             
+            # --- Apply SEO Defaults ---
+            if g.current_store:
+                seo_defaults = SEODefaults.query.filter_by(store_id=g.current_store.id, entity_type='collection').first()
+                if seo_defaults:
+                    seo_field_template_map = {
+                        'meta_title': seo_defaults.title_template,
+                        'meta_description': seo_defaults.description_template,
+                        'og_title': seo_defaults.og_title_template,
+                        'og_description': seo_defaults.og_description_template,
+                        'twitter_title': seo_defaults.twitter_title_template,
+                        'twitter_description': seo_defaults.twitter_description_template,
+                    }
+                    
+                    for field_name, template_string in seo_field_template_map.items():
+                        current_value = getattr(collection, field_name, None)
+                        if not current_value and template_string:
+                            generated_value = generate_seo_field(collection, field_name, template_string, g.current_store)
+                            setattr(collection, field_name, generated_value)
+            # --- End Apply SEO Defaults ---
+                            
             db.session.add(collection)
+            # Commit *after* applying defaults
             db.session.commit()
             flash('Collection created successfully', 'success')
             return redirect(url_for('collections'))
@@ -599,6 +753,28 @@ def create_app():
                     for product in tag.products:
                         collection.products.append(product)
             
+            # --- Apply SEO Defaults ---
+            # Note: populate_obj already happened, so we check current values
+            if g.current_store:
+                seo_defaults = SEODefaults.query.filter_by(store_id=g.current_store.id, entity_type='collection').first()
+                if seo_defaults:
+                    seo_field_template_map = {
+                        'meta_title': seo_defaults.title_template,
+                        'meta_description': seo_defaults.description_template,
+                        'og_title': seo_defaults.og_title_template,
+                        'og_description': seo_defaults.og_description_template,
+                        'twitter_title': seo_defaults.twitter_title_template,
+                        'twitter_description': seo_defaults.twitter_description_template,
+                    }
+                    
+                    for field_name, template_string in seo_field_template_map.items():
+                        current_value = getattr(collection, field_name, None)
+                        if not current_value and template_string:
+                            generated_value = generate_seo_field(collection, field_name, template_string, g.current_store)
+                            setattr(collection, field_name, generated_value)
+            # --- End Apply SEO Defaults ---
+                            
+            # Commit *after* applying defaults
             db.session.commit()
             flash('Collection updated successfully', 'success')
             return redirect(url_for('collections'))
@@ -647,7 +823,7 @@ def create_app():
         return redirect(url_for('collections'))
     
     @app.route('/collections/create-from-tags', methods=['POST'])
-    async def create_collections_from_tags():
+    async def create_collections_from_tags(): # Re-apply async just in case
         """Create collections from all tags asynchronously."""
         form = CreateCollectionsForm()
         exclude_imported_tags = form.exclude_imported_tags.data
@@ -668,6 +844,11 @@ def create_app():
         
         tag_counts = tag_query.all()
         
+        # Fetch SEO defaults for collections once before the loop
+        collection_seo_defaults = None
+        if g.current_store:
+            collection_seo_defaults = SEODefaults.query.filter_by(store_id=g.current_store.id, entity_type='collection').first()
+
         # First, create collections from existing tags
         for tag, product_count in tag_counts:
             # Skip tags with no products or only one product
@@ -701,241 +882,141 @@ def create_app():
             
             existing_collection = collection_query.first()
             if not existing_collection:
-                # Generate SEO-friendly title
-                title = f"{tag.name.title()} Collection | Premium {tag.name.title()} Products"
-                
-                # Generate SEO-friendly slug
+                # Generate SEO-friendly slug (keep this part)
                 base_slug = tag.name.lower().replace(' ', '-')
                 slug = base_slug
-                
-                # Check if a collection with this slug already exists (across all stores)
-                # We need to check globally to avoid unique constraint violations
                 slug_query = Collection.query.filter_by(slug=slug)
-                
                 counter = 1
                 while slug_query.first():
                     slug = f"{base_slug}-{counter}"
                     counter += 1
-                    # Check the new slug
                     slug_query = Collection.query.filter_by(slug=slug)
-                
-                # Get cleaned product titles for meta description
-                cleaned_product_titles = [apply_cleanup_rules(p.title) for p in tag.products[:5]]
-                product_titles_text = ", ".join(cleaned_product_titles)
-                if len(cleaned_product_titles) < len(tag.products):
-                    product_titles_text += f", and {len(tag.products) - len(cleaned_product_titles)} more"
-                
-                # Get product examples for description generation
-                product_examples = [
-                    {"title": p.title, "description": p.description} 
-                    for p in tag.products[:5]
-                ]
-                
-                # Use Claude to generate meta description and description
-                meta_description = f"Explore our {tag.name} collection featuring {product_titles_text}. Find the perfect {tag.name} for your needs."
-                
-                # Generate SEO-optimized title
-                title = f"{tag.name.title()} Collection | Shop Premium {tag.name.title()}"
-                
-                # Get cleaned product examples for description
-                product_examples = tag.products[:3]
-                example_text = ""
-                if product_examples:
-                    # Apply cleanup rules to titles before joining
-                    cleaned_titles = [apply_cleanup_rules(p.title) for p in product_examples]
-                    example_text = "Featuring " + ", ".join(cleaned_titles)
-                    if len(tag.products) > 3:
-                        example_text += f" and {len(tag.products) - 3} more items"
-                
-                # Generate SEO-optimized description with product examples
-                description = f"""
-                <h1>Premium {tag.name.title()} Collection</h1>
-                <p>Discover our exclusive collection of {tag.name} products, carefully curated to bring you the finest selection. {example_text}.</p>
-                <h2>Why Shop Our {tag.name.title()} Collection?</h2>
-                <ul>
-                    <li>Handpicked selection of premium {tag.name} products</li>
-                    <li>High-quality materials and expert craftsmanship</li>
-                    <li>Trendy and timeless designs for every style</li>
-                    <li>Fast shipping and excellent customer service</li>
-                </ul>
-                <h2>About Our {tag.name.title()} Products</h2>
-                <p>Each item in our {tag.name} collection is selected for its quality, style, and value. Whether you're looking for everyday essentials or statement pieces, you'll find the perfect {tag.name} to suit your needs.</p>
-                <p>Shop our {tag.name} collection today and experience the difference quality makes.</p>
-                """
-                
-                # Generate SEO meta description
-                meta_description = f"Shop our premium {tag.name} collection. {example_text}. Free shipping on qualifying orders. Shop now!"
-                
+
+                # Create the collection object (without SEO fields initially)
                 collection = Collection(
-                    name=title,
+                    name=f"{tag.name.title()} Collection", # Use a simple name for now, defaults will override title
                     slug=slug,
-                    meta_description=meta_description,
-                    description=description,
-                    tag=tag
+                    tag=tag,
+                    store_id=g.current_store.id if g.current_store else None
+                    # description will be generated by defaults if template exists
                 )
                 
-                # Associate with current store
-                if g.current_store:
-                    collection.store_id = g.current_store.id
-                
-                # We don't need to manually add products to the collection
-                # since it's a smart collection based on the tag
-                # The tag relationship will automatically include all products with this tag
-                
+                # Add products to the collection
+                for product in tag.products:
+                    collection.products.append(product)
+
+                # --- Apply SEO Defaults ---
+                if collection_seo_defaults:
+                    seo_field_template_map = {
+                        'meta_title': collection_seo_defaults.title_template,
+                        'meta_description': collection_seo_defaults.description_template,
+                        'og_title': collection_seo_defaults.og_title_template,
+                        'og_description': collection_seo_defaults.og_description_template,
+                        'twitter_title': collection_seo_defaults.twitter_title_template,
+                        'twitter_description': collection_seo_defaults.twitter_description_template,
+                        # Also apply to the main 'description' field if a template exists
+                        'description': collection_seo_defaults.description_template,
+                    }
+                    
+                    for field_name, template_string in seo_field_template_map.items():
+                        # No need to check current_value, as it's a new object
+                        if template_string:
+                            generated_value = generate_seo_field(collection, field_name, template_string, g.current_store)
+                            setattr(collection, field_name, generated_value)
+                # --- End Apply SEO Defaults ---
+
                 db.session.add(collection)
                 created_count += 1
-                print(f"Created collection for tag: {tag.name} with {product_count} products")
-        
-        db.session.commit()
-        
-        # Now, analyze products without tags to create new collections (filtered by store)
-        # Check if AI service is configured before attempting analysis
-        if ai_service and ai_service.api_key:
-            untagged_query = Product.query.filter(~Product.tags.any())
-            if g.current_store:
-                untagged_query = untagged_query.filter_by(store_id=g.current_store.id)
-
-            untagged_products = untagged_query.all()
-            if untagged_products:
-                flash(f'Analyzing {len(untagged_products)} untagged products for collections using {Config.AI_PROVIDER}. This may take a while...', 'info')
-
-                # Process products in batches asynchronously using the configured AI service
-                try:
-                    results = await ai_service.batch_analyze_products_for_collections(untagged_products, batch_size=50)
-                except Exception as e:
-                    print(f"Error during batch collection analysis: {e}")
-                    flash(f"Error analyzing untagged products with {Config.AI_PROVIDER}: {e}", "danger")
-                    results = [] # Ensure results is an empty list on error
             else:
-                results = [] # No untagged products to analyze
-        else:
-            flash(f'AI Provider ({Config.AI_PROVIDER}) API key not set. Skipping analysis of untagged products.', 'warning')
-            untagged_products = [] # Ensure this is empty if skipped
-            results = [] # Ensure results is empty if skipped
-            
-            # Group products by category
-            categories = {}
-            for product, category in results:
-                if category:
-                    if category not in categories:
-                        categories[category] = []
-                    categories[category].append(product)
-            
-            # Create collections for each category
-            for category, products in categories.items():
-                if len(products) > 0:
-                    # Check if a collection already exists for this category (filtered by store)
-                    collection_query = Collection.query.filter_by(name=f"{category.capitalize()} Collection")
-                    if g.current_store:
-                        collection_query = collection_query.filter_by(store_id=g.current_store.id)
-                    
-                    existing_collection = collection_query.first()
-                    if not existing_collection:
-                        # Generate SEO-friendly slug
-                        base_slug = category.lower().replace(' ', '-')
-                        slug = base_slug
-                        
-                        # Check if a collection with this slug already exists (across all stores)
-                        # We need to check globally to avoid unique constraint violations
-                        slug_query = Collection.query.filter_by(slug=slug)
-                        
-                        counter = 1
-                        while slug_query.first():
-                            slug = f"{base_slug}-{counter}"
-                            counter += 1
-                            # Check the new slug
-                            slug_query = Collection.query.filter_by(slug=slug)
-                        
-                        collection = Collection(
-                            name=f"{category.capitalize()} Collection",
-                            slug=slug,
-                            description=f"Collection of {len(products)} products categorized as '{category}'",
-                        )
-                        
-                        # Associate with current store
-                        if g.current_store:
-                            collection.store_id = g.current_store.id
-                        
-                        # Add all products with this category
-                        for product in products:
-                            collection.products.append(product)
-                        
-                        db.session.add(collection)
-                        created_count += 1
-            
-            db.session.commit()
-        
+                skipped_count += 1
+                
+        # Commit all new collections at the end
         if created_count > 0:
-            flash(f'Successfully created {created_count} new collections', 'success')
+            try:
+                db.session.commit()
+                flash(f'Successfully created {created_count} new collections from tags.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error creating collections: {str(e)}', 'danger')
         else:
-            flash('No new collections created. Collections already exist for all tags with products.', 'info')
+            flash('No new collections were created.', 'info')
             
+        if skipped_count > 0:
+            flash(f'Skipped {skipped_count} tags (already had collections, too few products, single word, or excluded).', 'info')
+
         return redirect(url_for('collections'))
-    
-    @app.route('/collections/<int:id>/view')
+
+    @app.route('/collections/<int:id>')
     def view_collection(id):
-        """View a collection and its products."""
+        """View a specific collection and its products."""
         collection = Collection.query.get_or_404(id)
         
-        # If this is a smart collection (has a tag), get products with this tag
-        if collection.tag:
-            # Get all products with this tag (dynamically, filtered by store)
-            products_query = Product.query.join(Product.tags).filter(Tag.id == collection.tag_id)
-            if g.current_store:
-                products_query = products_query.filter(Product.store_id == g.current_store.id)
+        # Ensure collection belongs to the current store
+        if g.current_store and collection.store_id != g.current_store.id:
+            flash('Collection not found in the current store.', 'danger')
+            return redirect(url_for('collections'))
             
-            products = products_query.all()
-            return render_template('view_collection.html', collection=collection, products=products)
-        else:
-            # For regular collections, use the pre-populated products
-            return render_template('view_collection.html', collection=collection)
-    
+        # Paginate products within the collection
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        
+        # We need to paginate the products relationship
+        # This requires a query object, not just the list
+        products_query = Product.query.with_parent(collection).order_by(Product.title)
+        pagination = products_query.paginate(page=page, per_page=per_page, error_out=False)
+        products = pagination.items
+        
+        return render_template('view_collection.html', collection=collection, products=products, pagination=pagination)
+
     @app.route('/collections/<int:collection_id>/set-image/<int:product_id>', methods=['POST'])
     def set_collection_image(collection_id, product_id):
-        """Set the collection's featured image from a product."""
+        """Set the featured image for a collection based on a product."""
         collection = Collection.query.get_or_404(collection_id)
         product = Product.query.get_or_404(product_id)
-
+        
         # Security check: Ensure both belong to the current store
         if g.current_store:
             if collection.store_id != g.current_store.id or product.store_id != g.current_store.id:
-                flash('Invalid operation: Collection or product not found in the current store.', 'danger')
+                flash('Invalid operation for current store.', 'danger')
                 return redirect(url_for('view_collection', id=collection_id))
+                
+        if product.image_url:
+            collection.image_url = product.image_url
+            db.session.commit()
+            flash(f'Collection image updated to use image from "{product.title}".', 'success')
         else:
-            # Handle case where no store is selected (should ideally not happen for store-specific items)
-            flash('No store selected. Please select a store first.', 'warning')
-            return redirect(url_for('stores'))
-
-
-        # Optional check: Ensure product is actually in the collection (might be complex for smart collections)
-        # For simplicity, we'll allow setting image from any product in the same store for now.
-
-        if not product.image_url:
             flash(f'Product "{product.title}" does not have an image URL.', 'warning')
-            return redirect(url_for('view_collection', id=collection_id))
-
-        collection.image_url = product.image_url
-        db.session.commit()
-        flash(f'Collection "{collection.name}" image updated successfully.', 'success')
+            
         return redirect(url_for('view_collection', id=collection_id))
-    
+
     @app.route('/collections/delete-all', methods=['POST'])
     def delete_all_collections():
-        """Delete all collections."""
-        # Filter collections by store
-        collections_query = Collection.query
-        if g.current_store:
-            collections_query = collections_query.filter_by(store_id=g.current_store.id)
+        """Delete all collections for the current store."""
+        if not g.current_store:
+            flash('Please select a store first.', 'warning')
+            return redirect(url_for('collections'))
+            
+        collections_to_delete = Collection.query.filter_by(store_id=g.current_store.id).all()
+        count = len(collections_to_delete)
         
-        collections = collections_query.all()
-        count = len(collections)
-        
-        for collection in collections:
-            db.session.delete(collection)
-        
-        db.session.commit()
-        flash(f'Successfully deleted {count} collections', 'success')
+        if count == 0:
+            flash('No collections to delete for this store.', 'info')
+        else:
+            for collection in collections_to_delete:
+                db.session.delete(collection)
+            db.session.commit()
+            flash(f'Successfully deleted {count} collections for store "{g.current_store.name}".', 'success')
+            
         return redirect(url_for('collections'))
+
+    # --- Environment Variables Routes ---
+    # Removed corrupted/duplicate env_vars route definition
+    
+    # Removed duplicate view_collection route definition
+    
+    # Removed duplicate set_collection_image route definition
+    
+    # Removed duplicate delete_all_collections route definition
     
     @app.route('/env-vars')
     def env_vars():

@@ -104,7 +104,7 @@ default_templates = {
 }
 ```
 
-## Implementation Steps
+## Original Implementation Steps (Pre-Review)
 
 1. **Database Updates**
    - Add SEO fields to Product and Collection models
@@ -129,3 +129,45 @@ default_templates = {
    - Test template variable substitution
    - Verify character limits
    - Test social media previews
+
+## Revised Implementation Steps (Post-Review - 2025-04-03)
+
+Based on the clarification that SEO data is for Shopify (via metafields) and not this application's frontend.
+
+### Current Status Summary
+
+*   **Completed:**
+    *   Database models defined (`SEOFields` mixin, `SEODefaults`).
+    *   Migration script created (`142f42794f63...`).
+    *   Forms updated (`SEOFormMixin` added to `ProductForm`, `CollectionForm`).
+    *   Basic SEO sections added to product/collection edit templates.
+    *   Character counters implemented in forms.
+*   **Remaining:**
+    *   Run the database migration (`flask db upgrade`).
+    *   Verify/Implement backend logic for saving SEO form data to the database.
+    *   Implement backend logic for Shopify API integration (sending SEO data, likely via metafields).
+    *   Implement frontend preview components (Google snippet, social cards) in forms.
+    *   Perform testing (local saving, Shopify integration, previews).
+
+### Revised Plan Steps
+
+1.  **(Manual Step for User):** Run the database migration (`flask db upgrade` or similar).
+2.  **Backend Logic - Data Saving:** Ensure Flask view functions correctly save all `SEOFormMixin` fields to the `Product`/`Collection` models upon form submission.
+3.  **Backend Logic - Shopify Integration:** Modify Shopify API interaction code (e.g., in `shopify_integration.py`) to read saved SEO fields and include them in product/collection create/update API calls, likely using Shopify `metafields`.
+4.  **Frontend Previews:** Implement HTML/CSS/JS in form templates (`product_form.html`, `collection_form.html`) and `static/js/script.js` to display live previews of Google snippets and social cards based on form input.
+5.  **Testing:** Thoroughly test data saving, Shopify API integration (check metafields in Shopify), and frontend preview functionality.
+
+### Plan Flowchart
+
+```mermaid
+graph TD
+    A[Start: Current Status] --> B(Run DB Migration - Manual);
+    B --> C(Implement Backend Logic - Data Saving);
+    C --> D(Implement Backend Logic - Shopify Integration);
+    D --> E(Implement Frontend Previews);
+    E --> F(Testing);
+    F --> G(Done);
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style G fill:#ccf,stroke:#333,stroke-width:2px
+    style D fill:#f8d7da,stroke:#721c24,stroke-width:2px; /* Highlight critical Shopify step */

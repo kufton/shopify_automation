@@ -216,7 +216,52 @@
                                         {% endif %}
                                         <small class="form-text text-muted">Leave blank unless this collection content exists on another primary URL.</small>
                                     </div>
-
+                                    
+                                    <hr>
+                                    <h5>Previews</h5>
+                                    
+                                    <!-- Google Preview -->
+                                    <div class="mb-3">
+                                        <h6>Google Search Result Preview</h6>
+                                        <div class="google-preview p-3 border rounded bg-light">
+                                            <div id="google_preview_title" class="text-primary" style="font-size: 1.1rem; font-weight: 400;"></div>
+                                            <div id="google_preview_url" class="text-success" style="font-size: 0.9rem;">{{ request.host_url }}collections/your-collection-slug</div>
+                                            <div id="google_preview_description" style="font-size: 0.9rem; color: #545454;"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Twitter Preview -->
+                                    <div class="mb-3">
+                                        <h6>Twitter Card Preview</h6>
+                                        <div class="twitter-preview border rounded overflow-hidden">
+                                            <div id="twitter_preview_image_container" class="bg-light text-center" style="min-height: 150px; display: flex; align-items: center; justify-content: center;">
+                                                <img id="twitter_preview_image" src="" alt="Twitter Image Preview" style="max-width: 100%; max-height: 200px; display: none;">
+                                                <span id="twitter_image_placeholder" class="text-muted small">No Image Provided</span>
+                                            </div>
+                                            <div class="p-3">
+                                                <div id="twitter_preview_title" class="fw-bold"></div>
+                                                <div id="twitter_preview_description" class="small text-muted"></div>
+                                                <div id="twitter_preview_domain" class="small text-muted">{{ request.host }}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Open Graph (Facebook/LinkedIn) Preview -->
+                                    <div class="mb-3">
+                                        <h6>Facebook/Open Graph Preview</h6>
+                                        <div class="og-preview border rounded overflow-hidden bg-light">
+                                             <div id="og_preview_image_container" class="bg-secondary text-center" style="min-height: 150px; display: flex; align-items: center; justify-content: center;">
+                                                <img id="og_preview_image" src="" alt="OG Image Preview" style="max-width: 100%; max-height: 200px; display: none;">
+                                                <span id="og_image_placeholder" class="text-muted small">No Image Provided</span>
+                                            </div>
+                                            <div class="p-3 bg-white">
+                                                <div id="og_preview_domain" class="small text-muted text-uppercase">{{ request.host }}</div>
+                                                <div id="og_preview_title" class="fw-bold"></div>
+                                                <div id="og_preview_description" class="small text-muted"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -348,6 +393,99 @@
         setupCharacterCounter('og_description', 'og_description_count', 200);
         setupCharacterCounter('twitter_title', 'twitter_title_count', 70);
         setupCharacterCounter('twitter_description', 'twitter_description_count', 200);
+
+        // --- Live Preview Logic ---
+        function updatePreview(inputId, previewId, defaultValue = '') {
+            const inputElement = document.getElementById(inputId);
+            const previewElement = document.getElementById(previewId);
+            if (inputElement && previewElement) {
+                previewElement.textContent = inputElement.value || defaultValue;
+            }
+        }
+
+        function updateImagePreview(inputId, imgId, placeholderId, containerId) {
+            const inputElement = document.getElementById(inputId);
+            const imgElement = document.getElementById(imgId);
+            const placeholderElement = document.getElementById(placeholderId);
+            const containerElement = document.getElementById(containerId);
+
+            if (inputElement && imgElement && placeholderElement && containerElement) {
+                const url = inputElement.value.trim();
+                if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                    imgElement.src = url;
+                    imgElement.style.display = 'block';
+                    placeholderElement.style.display = 'none';
+                } else {
+                    imgElement.src = '';
+                    imgElement.style.display = 'none';
+                    placeholderElement.style.display = 'inline'; // Or 'block' depending on placeholder styling
+                }
+            }
+        }
+
+        const fieldsToPreview = {
+            'meta_title': { previewId: 'google_preview_title', default: 'Meta Title Preview' },
+            'meta_description': { previewId: 'google_preview_description', default: 'Meta description preview text will appear here...' },
+            'og_title': { previewId: 'og_preview_title', default: 'Open Graph Title Preview' },
+            'og_description': { previewId: 'og_preview_description', default: 'Open Graph description preview...' },
+            'twitter_title': { previewId: 'twitter_preview_title', default: 'Twitter Title Preview' },
+            'twitter_description': { previewId: 'twitter_preview_description', default: 'Twitter description preview...' }
+        };
+
+        const imageFieldsToPreview = {
+            'og_image': { imgId: 'og_preview_image', placeholderId: 'og_image_placeholder', containerId: 'og_preview_image_container' },
+            'twitter_image': { imgId: 'twitter_preview_image', placeholderId: 'twitter_image_placeholder', containerId: 'twitter_preview_image_container' }
+        };
+
+        // Setup listeners for text fields
+        for (const inputId in fieldsToPreview) {
+            const { previewId, default: defaultValue } = fieldsToPreview[inputId];
+            const inputElement = document.getElementById(inputId);
+            if (inputElement) {
+                inputElement.addEventListener('input', () => updatePreview(inputId, previewId, defaultValue));
+                // Initial update on load
+                updatePreview(inputId, previewId, defaultValue);
+            }
+        }
+
+        // Setup listeners for image fields
+        for (const inputId in imageFieldsToPreview) {
+            const { imgId, placeholderId, containerId } = imageFieldsToPreview[inputId];
+            const inputElement = document.getElementById(inputId);
+            if (inputElement) {
+                inputElement.addEventListener('input', () => updateImagePreview(inputId, imgId, placeholderId, containerId));
+                // Initial update on load
+                updateImagePreview(inputId, imgId, placeholderId, containerId);
+            }
+        }
+        
+        // Update Google URL preview based on slug or name for collections
+        const slugInput = document.getElementById('slug');
+        const nameInput = document.getElementById('name');
+        const googleUrlPreview = document.getElementById('google_preview_url');
+        
+        if (googleUrlPreview) {
+            function updateCollectionGoogleUrl() {
+                let slugValue = 'your-collection-slug'; // Default
+                if (slugInput && slugInput.value.trim()) {
+                    slugValue = slugInput.value.trim().toLowerCase().replace(/\s+/g, '-');
+                } else if (nameInput && nameInput.value.trim()) {
+                    // Fallback to generating from name if slug is empty
+                    slugValue = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                }
+                googleUrlPreview.textContent = `{{ request.host_url }}collections/${slugValue || 'your-collection-slug'}`;
+            }
+            
+            if (slugInput) {
+                slugInput.addEventListener('input', updateCollectionGoogleUrl);
+            }
+            // Also update if the name changes, as it might affect the auto-generated slug
+            if (nameInput) {
+                 nameInput.addEventListener('input', updateCollectionGoogleUrl);
+            }
+            updateCollectionGoogleUrl(); // Initial update
+        }
+
     });
 </script>
 {% endblock %}

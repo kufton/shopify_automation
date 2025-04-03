@@ -455,7 +455,36 @@ class ShopifyIntegration:
 
         # Get tags as a comma-separated string
         tag_string = ",".join([tag.name for tag in product.tags])
-        print(f"Exporting product {product.title} to store {self.store_url} with tags: {tag_string}")
+        print(f"Exporting product {product.title} (ID: {product.id}, Shopify ID: {product.shopify_id}) to store {self.store_url} with tags: {tag_string}")
+
+        # --- Prepare SEO Metafields ---
+        metafields = []
+        seo_namespace = "custom_seo" # Define a namespace for our SEO fields
+
+        seo_fields_map = {
+            'meta_title': 'single_line_text_field',
+            'meta_description': 'multi_line_text_field',
+            'og_title': 'single_line_text_field',
+            'og_description': 'multi_line_text_field',
+            'og_image': 'url',
+            'twitter_card': 'single_line_text_field',
+            'twitter_title': 'single_line_text_field',
+            'twitter_description': 'multi_line_text_field',
+            'twitter_image': 'url',
+            'canonical_url': 'url'
+        }
+
+        for field_name, field_type in seo_fields_map.items():
+            value = getattr(product, field_name, None)
+            if value: # Only add metafield if value exists
+                metafields.append({
+                    "namespace": seo_namespace,
+                    "key": field_name,
+                    "value": value,
+                    "type": field_type
+                })
+        # --- End Prepare SEO Metafields ---
+
         
         # Check if product already exists in Shopify
         if product.shopify_id:
@@ -473,7 +502,9 @@ class ShopifyIntegration:
             product_data = {
                 "product": {
                     "id": product.shopify_id,
-                    "tags": tag_string
+                    "tags": tag_string,
+                    # Add metafields for update
+                    "metafields": metafields
                 }
             }
             
@@ -708,18 +739,11 @@ class ShopifyIntegration:
                             "condition": collection.tag.name
                         }
                     ],
-                    "metafields": []
+                    # Use the pre-built metafields array
+                    "metafields": metafields
                 }
             }
-            
-            # Add meta description as a metafield if available
-            if collection.meta_description:
-                collection_data["smart_collection"]["metafields"].append({
-                    "namespace": "global",
-                    "key": "description_tag",
-                    "value": collection.meta_description,
-                    "type": "single_line_text_field"
-                })
+            # Removed old specific meta_description handling
             
             print(f"Exporting smart collection to Shopify: {json.dumps(collection_data, indent=2)}")
             
@@ -739,18 +763,11 @@ class ShopifyIntegration:
                     "body_html": collection.description or "",
                     "published": True,
                     "handle": collection.slug if collection.slug else None,
-                    "metafields": []
+                    # Use the pre-built metafields array
+                    "metafields": metafields
                 }
             }
-            
-            # Add meta description as a metafield if available
-            if collection.meta_description:
-                collection_data["custom_collection"]["metafields"].append({
-                    "namespace": "global",
-                    "key": "description_tag",
-                    "value": collection.meta_description,
-                    "type": "single_line_text_field"
-                })
+            # Removed old specific meta_description handling
             
             print(f"Exporting custom collection to Shopify: {json.dumps(collection_data, indent=2)}")
             
