@@ -102,6 +102,26 @@ The meta description should:
 Return only the meta description text with no additional explanation.
 """
 
+DEFAULT_CLAUDE_KEYWORD_MAP_PROMPT = """
+You are an SEO and e-commerce expert. Your task is to analyze the following store concept and generate a structured semantic keyword map in JSON format.
+
+Store Concept: {concept}
+
+Generate a JSON object with the following structure:
+{
+  "core_concepts": ["list of 3-5 primary keywords directly representing the concept"],
+  "related_topics": ["list of 5-10 keywords for related themes or product categories"],
+  "long_tail_keywords": ["list of 10-15 longer, more specific phrases potential customers might search for"],
+  "audience_descriptors": ["list of 3-5 keywords describing the target audience (if inferrable)"]
+}
+
+Guidelines:
+- All keywords should be lowercase.
+- Keywords should be relevant for SEO and e-commerce.
+- Focus on terms customers would actually use for searching.
+- Ensure the output is ONLY the valid JSON object, with no surrounding text or explanations.
+"""
+
 class ClaudeService(BaseAIService):
     """Claude implementation for AI product tagging and collection generation."""
 
@@ -302,3 +322,55 @@ class ClaudeService(BaseAIService):
         except Exception as e:
             print(f"Error generating Claude meta description for {tag_name}: {e}")
             return default_meta
+
+
+    async def generate_keyword_map_async(self, concept: str) -> Dict[str, Any]:
+        """Generate a semantic keyword map based on a store concept using Claude."""
+        print(f"Generating Claude keyword map for concept: {concept[:50]}...")
+        default_map = {}
+        if not self.api_key:
+            print("API key is missing, cannot generate keyword map.")
+            return default_map # Return empty dict on failure
+        if not concept:
+            print("Concept is empty, cannot generate keyword map.")
+            return default_map
+
+        prompt_template = self.get_prompt('generate_keyword_map', DEFAULT_CLAUDE_KEYWORD_MAP_PROMPT)
+        prompt = prompt_template.format(concept=concept)
+        system_prompt = "You are an SEO expert generating structured keyword data in JSON format based on a provided concept."
+
+        try:
+            response_text = await self._call_claude_api(
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                max_tokens=1000, # Allow ample tokens for JSON structure
+                temperature=0.3  # Lower temperature for structured output
+            )
+            print(f"Raw keyword map response from Claude: {response_text}")
+
+            # Attempt to parse the JSON response
+            try:
+                # Find the JSON block in case Claude adds extra text (though the prompt discourages it)
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_string = response_text[json_start:json_end]
+                    keyword_map = json.loads(json_string)
+                    # Basic validation of structure
+                    if isinstance(keyword_map, dict) and all(k in keyword_map for k in ["core_concepts", "related_topics", "long_tail_keywords", "audience_descriptors"]):
+                         print(f"Successfully parsed keyword map for concept: {concept[:50]}...")
+                         return keyword_map
+                    else:
+                        print("Error: Parsed JSON does not match expected structure.")
+                        return default_map
+                else:
+                    print("Error: Could not find JSON object in Claude response.")
+                    return default_map
+            except json.JSONDecodeError as json_e:
+                print(f"Error decoding JSON from Claude response: {json_e}")
+                print(f"Response text was: {response_text}")
+                return default_map
+
+        except Exception as e:
+            print(f"Error generating Claude keyword map for concept '{concept[:50]}...': {e}")
+            return default_map

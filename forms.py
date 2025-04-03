@@ -71,6 +71,8 @@ class StoreForm(FlaskForm):
     name = StringField('Store Name', validators=[DataRequired(), Length(max=255)])
     url = StringField('Store URL', validators=[DataRequired(), Length(max=255)])
     access_token = StringField('Access Token', validators=[Optional(), Length(max=255)])
+    concept = TextAreaField('Store Concept', validators=[Optional()]) # Added concept field
+    keyword_map = TextAreaField('Keyword Map (JSON)', validators=[Optional()]) # Added keyword_map field
     submit = SubmitField('Save')
 
 class StoreSelectForm(FlaskForm):

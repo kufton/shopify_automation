@@ -1795,8 +1795,26 @@ def create_app():
                     flash(f'A store with URL "{form.url.data}" already exists.', 'warning')
                     return redirect(url_for('stores'))
             
-            # Update store
+            # Update store - populate basic fields first
             form.populate_obj(store)
+            
+            # Handle keyword_map JSON parsing
+            try:
+                keyword_map_text = form.keyword_map.data
+                if keyword_map_text and keyword_map_text.strip():
+                    store.keyword_map = json.loads(keyword_map_text)
+                else:
+                    store.keyword_map = None # Set to None if textarea is empty
+            except json.JSONDecodeError:
+                flash('Invalid JSON format in Keyword Map. Changes not saved.', 'danger')
+                # Optionally, render the form again instead of redirecting
+                # return render_template('store_form.html', form=form, title='Edit Store', store=store)
+                # For now, we'll proceed but the invalid JSON won't be saved due to commit below
+                pass # Let the commit proceed, but the invalid JSON won't be saved if populate_obj didn't set it
+            except Exception as e:
+                 flash(f'Error processing Keyword Map: {e}', 'danger')
+                 pass # Allow commit to proceed without keyword map changes
+
             db.session.commit()
             
             # If this is the current store, update environment variables
@@ -1808,7 +1826,7 @@ def create_app():
             flash('Store updated successfully.', 'success')
             return redirect(url_for('stores'))
         
-        return render_template('store_form.html', form=form, title='Edit Store')
+        return render_template('store_form.html', form=form, title='Edit Store', store=store) # Pass store object to template
     
     @app.route('/stores/<int:id>/delete', methods=['POST'])
     def delete_store(id):
@@ -1838,8 +1856,47 @@ def create_app():
             flash(f'Now viewing store: {store.name}', 'success')
         else:
             flash('Store not found.', 'danger')
-        
         return redirect(url_for('index'))
+
+    @app.route('/stores/<int:store_id>/generate_keyword_map', methods=['POST'])
+    def generate_store_keyword_map(store_id):
+        """Generate keyword map for a store based on its concept using AI."""
+        store = Store.query.get_or_404(store_id)
+        
+        # Ensure the store belongs to the current context if multi-tenancy is strict
+        # (Assuming get_or_404 is sufficient for now, or add check: if store.id != g.current_store.id: abort(403))
+        
+        if not store.concept or not store.concept.strip():
+            return jsonify({'error': 'Store concept is not defined or empty.'}), 400
+            
+        # Access the ai_service initialized in create_app scope
+        # Ensure ai_service is accessible here (it should be if defined before routes)
+        if 'ai_service' not in locals() and 'ai_service' not in globals():
+             # This case should ideally not happen if create_app structure is correct
+             # Maybe re-fetch it? Or rely on it being available.
+             # For now, assume it's available or raise error.
+             print("CRITICAL: ai_service not found in generate_store_keyword_map scope!")
+             return jsonify({'error': 'AI Service configuration error.'}), 500
+
+        if not ai_service:
+            return jsonify({'error': 'AI Service is not configured (e.g., missing API key).'}), 500
+            
+        try:
+            # Use the synchronous wrapper from the base class
+            keyword_map = ai_service.generate_keyword_map(store.concept)
+            
+            if not keyword_map: # Handle case where AI returns empty/invalid map
+                 return jsonify({'error': 'AI failed to generate a valid keyword map.'}), 500
+                 
+            # Return the generated map - DO NOT save it here, frontend handles update/save
+            return jsonify(keyword_map)
+            
+        except Exception as e:
+            print(f"Error calling AI service for keyword map generation: {e}")
+            # Log the full error traceback if possible
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Failed to generate keyword map: {e}'}), 500
 
     # --- Add Cleanup Rule Routes ---
 

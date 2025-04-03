@@ -39,7 +39,33 @@
                         {% endfor %}
                         <small class="form-text text-muted">Your Shopify access token for API access.</small>
                     </div>
+
+                    <hr class="my-4">
+                    <h6 class="mb-3">AI & SEO Settings</h6>
+
+                    <div class="mb-3">
+                        {{ form.concept.label(class="form-label") }}
+                        {{ form.concept(class="form-control" + (" is-invalid" if form.concept.errors else ""), rows="3") }}
+                        {% for error in form.concept.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                        <small class="form-text text-muted">Describe the core concept or niche of this store for AI analysis.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.keyword_map.label(class="form-label") }}
+                        <div class="input-group">
+                            {{ form.keyword_map(class="form-control" + (" is-invalid" if form.keyword_map.errors else ""), rows="10", id="keyword-map-textarea") }}
+                            <button type="button" id="generate-keyword-map-btn" class="btn btn-outline-secondary" style="height: fit-content;">Generate Map</button>
+                        </div>
+                         {% for error in form.keyword_map.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div> {# Ensure error shows even with input-group #}
+                        {% endfor %}
+                        <small class="form-text text-muted">Semantic keyword map (JSON format). You can edit this manually or generate it from the concept above.</small>
+                    </div>
                     
+                    <hr class="my-4">
+
                     <div class="d-flex justify-content-between">
                         <a href="{{ url_for('stores') }}" class="btn btn-secondary">Cancel</a>
                         {{ form.submit(class="btn btn-primary") }}
@@ -49,4 +75,73 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }} {# Include scripts from base template if any #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const generateBtn = document.getElementById('generate-keyword-map-btn');
+    const keywordMapTextarea = document.getElementById('keyword-map-textarea');
+    const csrfTokenInput = document.querySelector('input[name="csrf_token"]'); // Get the input element
+    const csrfToken = csrfTokenInput ? csrfTokenInput.value : null; // Get value if element exists
+    
+    // Get store ID from a data attribute or hidden input if needed, or rely on URL generation
+    // Let's assume the URL generation in the template is correct and sufficient
+    // const storeId = {{ store.id | tojson }}; // This might cause issues if store isn't always defined
+    const generateUrl = "{{ url_for('generate_store_keyword_map', store_id=store.id if store else 0) }}"; // Handle case where store might not exist (e.g., add view)
+
+
+    if (generateBtn && keywordMapTextarea && csrfToken && generateUrl.includes('/stores/0/') === false) { // Check CSRF and valid URL
+        generateBtn.addEventListener('click', async function() {
+            const currentMapValue = keywordMapTextarea.value.trim();
+            const isMapEmpty = !currentMapValue || currentMapValue === '{}' || currentMapValue === 'null';
+            
+            let proceed = isMapEmpty;
+            if (!isMapEmpty) {
+                proceed = window.confirm("Generating a new keyword map will overwrite your current edits. Proceed?");
+            }
+
+            if (proceed) {
+                generateBtn.disabled = true;
+                generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+
+                try {
+                    const response = await fetch(generateUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken // Include CSRF token
+                        },
+                        // Body is not needed as the backend reads concept from DB
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // Pretty-print the JSON before setting it in the textarea
+                        keywordMapTextarea.value = JSON.stringify(data, null, 2);
+                        // Optionally flash a success message (requires backend support or JS library)
+                        // alert('Keyword map generated successfully!');
+                    } else {
+                        alert('Error generating keyword map: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    alert('An error occurred while contacting the server.');
+                } finally {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = 'Generate Map';
+                }
+            }
+        });
+    } else if (!csrfToken) {
+        console.error("CSRF token not found. Generate button disabled.");
+    } else if (generateUrl.includes('/stores/0/')) {
+        console.warn("Store ID not available (likely add view). Generate button disabled.");
+        // Optionally disable the button visually
+        if(generateBtn) generateBtn.disabled = true;
+    }
+});
+</script>
 {% endblock %}

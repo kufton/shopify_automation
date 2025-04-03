@@ -50,6 +50,8 @@ class Store(db.Model):
     access_token = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    concept = db.Column(db.Text, nullable=True) # Added field for store concept
+    keyword_map = db.Column(JSON, nullable=True) # Added field for semantic keyword map
     
     # Relationships
     products = db.relationship('Product', backref='store', lazy=True, cascade="all, delete-orphan")

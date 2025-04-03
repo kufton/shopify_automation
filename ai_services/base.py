@@ -74,6 +74,11 @@ class BaseAIService(ABC):
         """Generate a meta description for a collection asynchronously."""
         pass
 
+    @abstractmethod
+    async def generate_keyword_map_async(self, concept: str) -> Dict[str, Any]:
+        """Generate a semantic keyword map based on a store concept asynchronously."""
+        pass
+
     async def batch_generate_tags(self, products: List[Any], batch_size: int = 50) -> List[Tuple[Any, List[str]]]:
         """Generate tags for multiple products in parallel."""
         results = []
@@ -166,6 +171,24 @@ class BaseAIService(ABC):
         try:
             description = loop.run_until_complete(self.generate_collection_description_async(tag_name, product_count, product_examples))
             return description
+        finally:
+            if close_loop:
+                loop.close()
+
+    def generate_keyword_map(self, concept: str) -> Dict[str, Any]:
+        """Synchronous wrapper for generate_keyword_map_async."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            close_loop = True
+        else:
+            close_loop = False
+
+        try:
+            keyword_map = loop.run_until_complete(self.generate_keyword_map_async(concept))
+            return keyword_map
         finally:
             if close_loop:
                 loop.close()

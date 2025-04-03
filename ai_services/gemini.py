@@ -58,6 +58,22 @@ Example Product Titles: {product_titles_text}
 Return ONLY the meta description text.
 """
 
+DEFAULT_GEMINI_KEYWORD_MAP_PROMPT = """
+Analyze the store concept below and generate a semantic keyword map in JSON format.
+
+Store Concept: {concept}
+
+Generate a JSON object with these keys: "core_concepts", "related_topics", "long_tail_keywords", "audience_descriptors".
+- "core_concepts": List of 3-5 primary keywords for the concept.
+- "related_topics": List of 5-10 keywords for related themes/categories.
+- "long_tail_keywords": List of 10-15 specific search phrases.
+- "audience_descriptors": List of 3-5 keywords for the target audience.
+
+Guidelines:
+- All keywords must be lowercase.
+- Focus on relevant e-commerce/SEO terms.
+- Output ONLY the valid JSON object. Do not include ```json markdown or any other text.
+"""
 
 class GeminiService(BaseAIService):
     """Gemini implementation for AI product tagging and collection generation."""
@@ -300,3 +316,57 @@ class GeminiService(BaseAIService):
         except Exception as e:
             print(f"Error generating Gemini meta description for {tag_name}: {e}")
             return default_meta
+
+    async def generate_keyword_map_async(self, concept: str) -> Dict[str, Any]:
+        """Generate a semantic keyword map based on a store concept using Gemini."""
+        print(f"Generating Gemini keyword map for concept: {concept[:50]}...")
+        default_map = {}
+        if not self.client:
+            print("Gemini client not configured, cannot generate keyword map.")
+            return default_map
+        if not concept:
+            print("Concept is empty, cannot generate keyword map.")
+            return default_map
+
+        prompt_template = self.get_prompt('generate_keyword_map', DEFAULT_GEMINI_KEYWORD_MAP_PROMPT)
+        prompt = prompt_template.format(concept=concept)
+
+        try:
+            response_text = await self._call_gemini_api(
+                prompt=prompt,
+                max_tokens=1000, # Allow ample tokens for JSON
+                temperature=0.3  # Lower temperature for structured JSON output
+            )
+
+            if response_text.startswith("error:"):
+                 print(f"Gemini API error generating keyword map: {response_text}")
+                 return default_map
+
+            print(f"Raw keyword map response from Gemini: {response_text}")
+
+            # Attempt to parse the JSON response
+            try:
+                # Gemini might sometimes wrap in ```json ... ```, try to strip it
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+
+                keyword_map = json.loads(response_text)
+                # Basic validation of structure
+                if isinstance(keyword_map, dict) and all(k in keyword_map for k in ["core_concepts", "related_topics", "long_tail_keywords", "audience_descriptors"]):
+                     print(f"Successfully parsed Gemini keyword map for concept: {concept[:50]}...")
+                     return keyword_map
+                else:
+                    print("Error: Parsed JSON from Gemini does not match expected structure.")
+                    return default_map
+
+            except json.JSONDecodeError as json_e:
+                print(f"Error decoding JSON from Gemini response: {json_e}")
+                print(f"Response text was: {response_text}")
+                return default_map
+
+        except Exception as e:
+            print(f"Error generating Gemini keyword map for concept '{concept[:50]}...': {e}")
+            return default_map
