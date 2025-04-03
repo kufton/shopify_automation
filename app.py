@@ -244,10 +244,27 @@ def create_app():
         products = products_query.order_by(Product.created_at.desc()).limit(20).all()
         collections = collections_query.order_by(Collection.created_at.desc()).limit(10).all()
         
+        # Get counts filtered by store
+        product_count = 0
+        collection_count = 0
+        tag_count = 0
+        if g.current_store:
+            product_count = products_query.count() # Use the already filtered query
+            collection_count = collections_query.count() # Use the already filtered query
+            tag_count = Tag.query.filter_by(store_id=g.current_store.id).count()
+        
         # Get all stores for the store selector
         stores = Store.query.all()
         
-        return render_template('index.html', products=products, collections=collections, stores=stores)
+        return render_template(
+            'index.html',
+            products=products,
+            collections=collections,
+            stores=stores,
+            product_count=product_count,
+            collection_count=collection_count,
+            tag_count=tag_count
+        )
     
     @app.route('/products')
     def products():

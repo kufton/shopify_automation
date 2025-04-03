@@ -34,7 +34,7 @@
                 <div class="card bg-primary text-white">
                     <div class="card-body">
                         <h5 class="card-title">Products</h5>
-                        <p class="card-text display-4">{{ products|length }}</p>
+                        <p class="card-text display-4">{{ product_count }}</p>
                         <a href="{{ url_for('products') }}" class="btn btn-light btn-sm">View All</a>
                     </div>
                 </div>
@@ -43,7 +43,7 @@
                 <div class="card bg-success text-white">
                     <div class="card-body">
                         <h5 class="card-title">Collections</h5>
-                        <p class="card-text display-4">{{ collections|length }}</p>
+                        <p class="card-text display-4">{{ collection_count }}</p>
                         <a href="{{ url_for('collections') }}" class="btn btn-light btn-sm">View All</a>
                     </div>
                 </div>
@@ -52,11 +52,7 @@
                 <div class="card bg-info text-white">
                     <div class="card-body">
                         <h5 class="card-title">Tags</h5>
-                        {% set tag_count = namespace(value=0) %}
-                        {% for product in products %}
-                            {% set tag_count.value = tag_count.value + product.tags|length %}
-                        {% endfor %}
-                        <p class="card-text display-4">{{ tag_count.value }}</p>
+                        <p class="card-text display-4">{{ tag_count }}</p>
                         <a href="{{ url_for('tags') }}" class="btn btn-light btn-sm">View All</a>
                     </div>
                 </div>
